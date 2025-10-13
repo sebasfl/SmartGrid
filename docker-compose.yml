@@ -1,7 +1,8 @@
 services:
+  # GPU-enabled trainer for MTL Transformer
   trainer-gpu:
-    tty: true          # Permite mantener el contenedor abierto
-    stdin_open: true   # Habilita entrada interactiva
+    tty: true
+    stdin_open: true
     build:
       context: .
       dockerfile: Dockerfile.gpu
@@ -11,17 +12,30 @@ services:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [gpu, compute, utility]
-    runtime: nvidia
+              capabilities: [gpu]
     environment:
-      - NVIDIA_VISIBLE_DEVICES=0
-      - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - TF_FORCE_GPU_ALLOW_GROWTH=true
+      - TF_CPP_MIN_LOG_LEVEL=2
+      - CUDA_VISIBLE_DEVICES=0
+      - LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     volumes:
       - ./data:/app/data
       - ./models:/app/models
+      - ./logs:/app/logs
       - ./src:/app/src
-    command: python -m src.forecasting.train_catboost_gpu
+      - ./config:/app/config
+    shm_size: '2gb'
+    ipc: host
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    # Default: Interactive bash shell (run commands manually)
+    # Override with: docker compose run --rm trainer-gpu python -m src.main
+    command: bash
 
+  # Dashboard service (optional)
   dash:
     build: .
     container_name: gridwise_dash
@@ -35,14 +49,4 @@ services:
     ports:
       - "8501:8501"
     restart: unless-stopped
-
-  worker:
-    build: .
-    container_name: gridwise_worker
-    command: python -m src.monitor.run
-    env_file: .env
-    volumes:
-      - ./data:/app/data
-      - ./models:/app/models
-      - ./src:/app/src
-    profiles: ["ops"]
+    profiles: ["dashboard"]  # Only start with: docker compose --profile dashboard up

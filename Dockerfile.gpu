@@ -1,33 +1,45 @@
-# Imagen base con soporte para CUDA y cuDNN
-FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
+# Use official NVIDIA TensorFlow GPU image (pre-configured with CUDA + cuDNN + TensorFlow)
+# This image includes TensorFlow 2.16+ with full GPU support out-of-the-box
+FROM nvcr.io/nvidia/tensorflow:24.08-tf2-py3
 
-# Instala dependencias del sistema
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install additional Python dependencies
+RUN pip install --no-cache-dir \
+    pandas==2.2.2 \
+    numpy==1.26.4 \
+    pyarrow==15.0.2 \
+    python-dateutil==2.9.0.post0 \
+    tzdata==2024.1 \
+    requests==2.32.3 \
+    tqdm==4.66.4 \
+    scipy==1.12.0 \
+    scikit-learn==1.4.2 \
+    matplotlib==3.8.4 \
+    catboost==1.2.5 \
+    prophet==1.1.5
 
-# Copia el código e instala dependencias de Python
+# Install RAPIDS for GPU-accelerated preprocessing (optional)
+RUN pip install --no-cache-dir \
+    cudf-cu12==24.8.* \
+    cupy-cuda12x \
+    --extra-index-url https://pypi.nvidia.com || echo "RAPIDS installation skipped (optional)"
+
+# Set working directory
 WORKDIR /app
-COPY requirements.txt .
-# Install standard dependencies first  
-RUN pip install --no-cache-dir -r requirements.txt || true
 
-# Install NVIDIA GPU libraries compatible with CUDA 12.1 
-RUN pip install --no-cache-dir --extra-index-url https://pypi.nvidia.com cudf-cu12 cupy-cuda12x || echo "GPU libraries installation failed, continuing..."
-
-# Copia el código fuente
+# Copy source code
 COPY src ./src
 COPY dash ./dash
 
-# Configura variables de entorno para GPU
+# Create necessary directories
+RUN mkdir -p /app/data/processed /app/data/analysis /app/models /app/logs
+
+# Environment variables for GPU
 ENV CUDA_VISIBLE_DEVICES=0
+ENV TF_FORCE_GPU_ALLOW_GROWTH=true
+ENV TF_CPP_MIN_LOG_LEVEL=2
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
-# Usuario no-root (seguridad)
-RUN useradd -m runner && chown -R runner:runner /app
+# Set permissions for data directories
+RUN chmod -R 777 /app/data /app/models /app/logs
 
-
-# Puerto expuesto (opcional)
-EXPOSE 8000
-
-# Comando por defecto (se sobrescribe en docker-compose)
 CMD ["bash"]

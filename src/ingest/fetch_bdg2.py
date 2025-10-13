@@ -1,100 +1,150 @@
 # src/ingest/fetch_bdg2.py
-import argparse, hashlib, pathlib, sys, requests
+# Simple script to fetch BDG2 raw electricity data
+import argparse
+import pathlib
+import requests
+from tqdm import tqdm
 import pandas as pd
 
-BASE = "https://media.githubusercontent.com/media/buds-lab/building-data-genome-project-2"
 
-# key: (remote_path_in_repo, local_rel_path_under_out_root, optional_sha256)
-FILES = {
-    "metadata": ("data/metadata/metadata.csv", "data/metadata/metadata.csv", None),
-    "raw_electricity": ("data/meters/raw/electricity.csv", "data/meters/raw/electricity.csv", None),
-    "cleaned_electricity": ("data/meters/cleaned/electricity_cleaned.csv", "data/meters/cleaned/electricity_cleaned.csv", None),
-}
-
-def sha256sum(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-def fetch_one(ref: str, key: str, out_root: pathlib.Path):
-    remote, local_rel, expect_sha = FILES[key]
-    url = f"{BASE}/{ref}/{remote}"
-    out_path = out_root / local_rel
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    r = requests.get(url, stream=True, timeout=300)
-    r.raise_for_status()
-    with out_path.open("wb") as f:
-        for chunk in r.iter_content(1 << 20):
-            if chunk:
-                f.write(chunk)
-
-    got = sha256sum(out_path)
-    if expect_sha and got != expect_sha:
-        raise SystemExit(f"[{key}] SHA mismatch! expected {expect_sha}, got {got}")
-    print(f"OK: {key} → {out_path} (sha256={got})")
-
-def build_parquet_from_cleaned(cleaned_csv: pathlib.Path, out_parquet: pathlib.Path):
+def download_raw_data(output_path: str = "data/raw_electricity.csv"):
     """
-    The BDG2 cleaned file is WIDE:
-        columns = ['timestamp', '<building_1>', '<building_2>', ...]
-    We melt to LONG and emit the schema that the trainer expects:
-        ['timestamp_local', 'building_id', 'meter', 'value']
+    Download BDG2 raw electricity data (wide format CSV).
+
+    Args:
+        output_path: Path where to save the CSV file (default: data/raw_electricity.csv)
     """
-    print(f"Reading cleaned CSV: {cleaned_csv}")
-    # parse dates efficiently
-    df = pd.read_csv(cleaned_csv)
+    # URL to BDG2 cleaned electricity data (wide format)
+    url = "https://media.githubusercontent.com/media/buds-lab/building-data-genome-project-2/master/data/meters/cleaned/electricity_cleaned.csv"
+
+    output_file = pathlib.Path(output_path)
+
+    # Create data directory if it doesn't exist
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"📥 Downloading BDG2 electricity data...")
+    print(f"   URL: {url}")
+    print(f"   Output: {output_file}")
+
+    try:
+        # Download with progress bar
+        response = requests.get(url, stream=True, timeout=300)
+        response.raise_for_status()
+
+        total_size = int(response.headers.get('content-length', 0))
+
+        with open(output_file, 'wb') as f, tqdm(
+            total=total_size,
+            unit='B',
+            unit_scale=True,
+            desc='Downloading'
+        ) as pbar:
+            for chunk in response.iter_content(chunk_size=1024*1024):  # 1MB chunks
+                if chunk:
+                    f.write(chunk)
+                    pbar.update(len(chunk))
+
+        print(f"\n✅ Download complete!")
+        print(f"   File saved to: {output_file.absolute()}")
+        print(f"   Size: {output_file.stat().st_size / (1024*1024):.2f} MB")
+
+        return output_file
+
+    except requests.exceptions.RequestException as e:
+        print(f"\n❌ Download failed: {e}")
+        raise
+
+
+def convert_to_parquet(csv_path: pathlib.Path, parquet_path: pathlib.Path):
+    """
+    Convert wide format CSV to long format Parquet.
+
+    Wide format: columns = ['timestamp', 'building_1', 'building_2', ...]
+    Long format: columns = ['timestamp_local', 'building_id', 'meter', 'value']
+
+    Args:
+        csv_path: Path to wide format CSV
+        parquet_path: Path to save long format parquet
+    """
+    print(f"\n📊 Converting to long format parquet...")
+    print(f"   Reading: {csv_path}")
+
+    # Read CSV
+    df = pd.read_csv(csv_path)
+
     if "timestamp" not in df.columns:
-        raise SystemExit("CSV is missing 'timestamp' column")
+        raise ValueError("CSV is missing 'timestamp' column")
 
     # Melt wide -> long
     value_vars = [c for c in df.columns if c != "timestamp"]
-    out = df.melt(
+    df_long = df.melt(
         id_vars=["timestamp"],
         value_vars=value_vars,
         var_name="building_id",
-        value_name="value",
+        value_name="value"
     )
 
-    # Rename and add columns expected by the trainer
-    out = out.rename(columns={"timestamp": "timestamp_local"})
-    out["meter"] = "electricity"
+    # Rename and add columns
+    df_long = df_long.rename(columns={"timestamp": "timestamp_local"})
+    df_long["meter"] = "electricity"
 
     # Clean types
-    out["timestamp_local"] = pd.to_datetime(out["timestamp_local"], errors="coerce")
-    out = out.dropna(subset=["timestamp_local"])
-    out["building_id"] = out["building_id"].astype(str)
+    df_long["timestamp_local"] = pd.to_datetime(df_long["timestamp_local"], errors="coerce")
+    df_long = df_long.dropna(subset=["timestamp_local"])
+    df_long["building_id"] = df_long["building_id"].astype(str)
 
-    out = out.sort_values(["building_id", "timestamp_local"]).reset_index(drop=True)
-    out_parquet.parent.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(out_parquet, index=False)
-    print(f"Wrote Parquet: {out_parquet} (rows={len(out)})")
+    # Sort
+    df_long = df_long.sort_values(["building_id", "timestamp_local"]).reset_index(drop=True)
+
+    # Save parquet
+    parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    df_long.to_parquet(parquet_path, index=False)
+
+    print(f"✅ Conversion complete!")
+    print(f"   Parquet saved to: {parquet_path.absolute()}")
+    print(f"   Records: {len(df_long):,}")
+    print(f"   Buildings: {df_long['building_id'].nunique()}")
+    print(f"   Date range: {df_long['timestamp_local'].min()} to {df_long['timestamp_local'].max()}")
+
+    return df_long
+
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="master", help="Commit SHA or branch of BDG2 (e.g. master)")
-    ap.add_argument("--out_root", default="/app/data/external/bdg2", help="Where to save downloads")
-    ap.add_argument("--what", default="metadata,raw_electricity,cleaned_electricity",
-                    help="Comma-separated keys to fetch")
-    ap.add_argument("--emit_parquet", default=None,
-                    help="If set, write long-format parquet here (e.g. /app/data/processed/bdg2_electricity_long.parquet)")
-    args = ap.parse_args()
+    parser = argparse.ArgumentParser(
+        description='Download BDG2 electricity data and convert to parquet'
+    )
+    parser.add_argument(
+        '--csv-output',
+        type=str,
+        default='data/raw_electricity.csv',
+        help='Output path for CSV file (default: data/raw_electricity.csv)'
+    )
+    parser.add_argument(
+        '--parquet-output',
+        type=str,
+        default='data/processed/bdg2_electricity_long.parquet',
+        help='Output path for parquet file (default: data/processed/bdg2_electricity_long.parquet)'
+    )
+    parser.add_argument(
+        '--skip-parquet',
+        action='store_true',
+        help='Skip parquet conversion (only download CSV)'
+    )
 
-    out_root = pathlib.Path(args.out_root)
-    keys = [w.strip() for w in args.what.split(",") if w.strip()]
+    args = parser.parse_args()
 
-    for key in keys:
-        if key not in FILES:
-            sys.exit(f"Unknown key: {key}. Options: {', '.join(FILES)}")
-        fetch_one(args.ref, key, out_root)
+    # Download CSV
+    csv_path = download_raw_data(args.csv_output)
 
-    if args.emit_parquet:
-        cleaned = out_root / "data/meters/cleaned/electricity_cleaned.csv"
-        if not cleaned.exists():
-            sys.exit(f"Cleaned CSV not found at {cleaned}")
-        build_parquet_from_cleaned(cleaned, pathlib.Path(args.emit_parquet))
+    # Convert to parquet (unless skipped)
+    if not args.skip_parquet:
+        parquet_path = pathlib.Path(args.parquet_output)
+        convert_to_parquet(csv_path, parquet_path)
+    else:
+        print("\n⏭️  Skipping parquet conversion (--skip-parquet flag)")
+
+    print(f"\n🎉 Data ingestion complete!")
+
 
 if __name__ == "__main__":
     main()

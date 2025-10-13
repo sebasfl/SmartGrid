@@ -1,0 +1,28 @@
+{
+  "data": {
+    "stride": 24
+  },
+  "training": {
+    "batch_size": 8,
+    "epochs": 2,
+    "use_mixed_precision": false,
+    "early_stopping_patience": 10,
+    "log_freq": 50
+  },
+  "optimizer": {
+    "learning_rate": 0.00001,
+    "gradient_clip_norm": 0.5,
+    "use_lr_schedule": false
+  },
+  "transformer": {
+    "dropout": 0.2,
+    "d_model": 64,
+    "num_layers": 2,
+    "num_heads": 4,
+    "ff_dim": 256
+  },
+  "loss": {
+    "alpha_anomaly": 0.3,
+    "beta_forecast": 0.7
+  }
+}
