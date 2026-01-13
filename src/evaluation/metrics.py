@@ -1,12 +1,16 @@
 # src/evaluation/metrics.py
 # Evaluation metrics for Multi-Task Learning
 import numpy as np
+import pandas as pd
+from pathlib import Path
+import json
+import pickle
 from sklearn.metrics import (
     mean_squared_error, mean_absolute_error, r2_score,
     precision_recall_fscore_support, roc_auc_score,
     confusion_matrix, accuracy_score
 )
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 
 
 class ForecastMetrics:
@@ -350,3 +354,221 @@ if __name__ == "__main__":
     print(f"   Anomaly F1: {results['anomaly']['f1_score']:.4f}")
 
     print("\n✅ All metrics work correctly!")
+
+
+# ============================================================================
+# Building-Level Evaluation Functions
+# ============================================================================
+
+class BuildingEvaluator:
+    """Evaluate model performance on individual buildings and sets of buildings."""
+
+    @staticmethod
+    def evaluate_single_building(df: pd.DataFrame, building_id: str, model, scaler,
+                                 config, create_sequences_fn) -> Optional[Dict]:
+        """Evaluate model on a single building.
+
+        Args:
+            df: Full dataframe
+            building_id: Building ID to evaluate
+            model: Trained MTL model
+            scaler: Fitted scaler
+            config: Configuration object
+            create_sequences_fn: Function to create sequences (from main.py)
+
+        Returns:
+            Dictionary with evaluation metrics or None if insufficient data
+        """
+        # Create sequences for this building
+        X, y_anomaly, y_forecast = create_sequences_fn(
+            df, building_id,
+            lookback=config.data.lookback_window,
+            horizon=config.data.forecast_horizon,
+            stride=config.data.stride
+        )
+
+        if X is None or len(X) == 0:
+            return None
+
+        # Normalize features
+        original_shape = X.shape
+        X_reshaped = X.reshape(-1, X.shape[-1])
+        X_normalized = scaler.transform(X_reshaped)
+        X = X_normalized.reshape(original_shape)
+
+        # Make predictions
+        anomaly_pred, forecast_pred = model.predict(X, verbose=0)
+
+        # Calculate metrics
+        forecast_metrics = ForecastMetrics.compute_all(y_forecast, forecast_pred)
+        anomaly_metrics = AnomalyMetrics.compute_all(y_anomaly, anomaly_pred, find_optimal=False)
+
+        return {
+            'building_id': building_id,
+            'n_sequences': len(X),
+            'forecast_rmse': forecast_metrics['rmse'],
+            'forecast_mae': forecast_metrics['mae'],
+            'forecast_mape': forecast_metrics['mape'],
+            'forecast_r2': forecast_metrics['r2'],
+            'anomaly_f1': anomaly_metrics['f1_score'],
+            'anomaly_precision': anomaly_metrics['precision'],
+            'anomaly_recall': anomaly_metrics['recall'],
+            'anomaly_roc_auc': anomaly_metrics['roc_auc']
+        }
+
+    @staticmethod
+    def evaluate_building_set(df: pd.DataFrame, building_ids: List[str], model, scaler,
+                              config, create_sequences_fn, set_name: str = 'test') -> pd.DataFrame:
+        """Evaluate model on a set of buildings.
+
+        Args:
+            df: Full dataframe
+            building_ids: List of building IDs to evaluate
+            model: Trained MTL model
+            scaler: Fitted scaler
+            config: Configuration object
+            create_sequences_fn: Function to create sequences
+            set_name: Name of the set (e.g., 'test', 'validation')
+
+        Returns:
+            DataFrame with evaluation results for each building
+        """
+        print(f"\n📊 Evaluating model on {len(building_ids)} {set_name} buildings...")
+        if set_name == 'test':
+            print(f"   Note: These buildings were NEVER seen during training or validation")
+
+        results = []
+        skipped = 0
+
+        for i, building_id in enumerate(building_ids):
+            if (i + 1) % 10 == 0:
+                print(f"   Evaluated {i + 1}/{len(building_ids)} buildings...")
+
+            metrics = BuildingEvaluator.evaluate_single_building(
+                df, building_id, model, scaler, config, create_sequences_fn
+            )
+
+            if metrics:
+                results.append(metrics)
+            else:
+                skipped += 1
+
+        results_df = pd.DataFrame(results)
+
+        print(f"\n✅ Evaluation complete!")
+        print(f"   Successfully evaluated: {len(results)} buildings")
+        print(f"   Skipped (insufficient data): {skipped} buildings")
+
+        return results_df
+
+    @staticmethod
+    def print_evaluation_summary(results_df: pd.DataFrame, set_name: str = 'test'):
+        """Print summary statistics of evaluation results.
+
+        Args:
+            results_df: DataFrame with evaluation metrics
+            set_name: Name of the evaluated set
+        """
+        print(f"\n{'='*70}")
+        print(f"{set_name.upper()} SET EVALUATION SUMMARY")
+        print(f"{'='*70}\n")
+
+        print("📈 Forecasting Performance:")
+        print(f"   RMSE:  {results_df['forecast_rmse'].mean():.4f} ± {results_df['forecast_rmse'].std():.4f}")
+        print(f"   MAE:   {results_df['forecast_mae'].mean():.4f} ± {results_df['forecast_mae'].std():.4f}")
+        print(f"   MAPE:  {results_df['forecast_mape'].mean():.2f}% ± {results_df['forecast_mape'].std():.2f}%")
+        print(f"   R²:    {results_df['forecast_r2'].mean():.4f} ± {results_df['forecast_r2'].std():.4f}")
+
+        print(f"\n🎯 Anomaly Detection Performance:")
+        print(f"   F1 Score:  {results_df['anomaly_f1'].mean():.4f} ± {results_df['anomaly_f1'].std():.4f}")
+        print(f"   Precision: {results_df['anomaly_precision'].mean():.4f} ± {results_df['anomaly_precision'].std():.4f}")
+        print(f"   Recall:    {results_df['anomaly_recall'].mean():.4f} ± {results_df['anomaly_recall'].std():.4f}")
+        print(f"   ROC AUC:   {results_df['anomaly_roc_auc'].mean():.4f} ± {results_df['anomaly_roc_auc'].std():.4f}")
+
+        # Calculate combined MTL score
+        mtl_evaluator = MTLMetrics(forecast_weight=0.6, anomaly_weight=0.4)
+        combined_scores = []
+        for _, row in results_df.iterrows():
+            forecast_score = max(0.0, row['forecast_r2'])  # R² as forecast score
+            anomaly_score = row['anomaly_f1']
+            combined = mtl_evaluator.forecast_weight * forecast_score + mtl_evaluator.anomaly_weight * anomaly_score
+            combined_scores.append(combined * 100)
+
+        print(f"\n🎯 Combined MTL Score (60% forecast + 40% anomaly):")
+        print(f"   Mean: {np.mean(combined_scores):.2f}/100 ± {np.std(combined_scores):.2f}")
+
+        print(f"\n📊 Dataset Statistics:")
+        print(f"   Total buildings evaluated: {len(results_df)}")
+        print(f"   Total sequences evaluated: {results_df['n_sequences'].sum():,}")
+        print(f"   Avg sequences per building: {results_df['n_sequences'].mean():.0f}")
+
+        # Performance percentiles
+        print(f"\n📈 Forecast RMSE Percentiles:")
+        print(f"   25th (best):   {results_df['forecast_rmse'].quantile(0.25):.4f}")
+        print(f"   50th (median): {results_df['forecast_rmse'].quantile(0.50):.4f}")
+        print(f"   75th:          {results_df['forecast_rmse'].quantile(0.75):.4f}")
+
+        # Show best and worst performing buildings
+        print(f"\n🏆 Top 5 Buildings (lowest forecast RMSE):")
+        top_buildings = results_df.nsmallest(5, 'forecast_rmse')[
+            ['building_id', 'forecast_rmse', 'forecast_mae', 'forecast_r2', 'anomaly_f1']
+        ]
+        print(top_buildings.to_string(index=False))
+
+        print(f"\n⚠️  Bottom 5 Buildings (highest forecast RMSE):")
+        bottom_buildings = results_df.nlargest(5, 'forecast_rmse')[
+            ['building_id', 'forecast_rmse', 'forecast_mae', 'forecast_r2', 'anomaly_f1']
+        ]
+        print(bottom_buildings.to_string(index=False))
+
+        print(f"\n{'='*70}\n")
+
+    @staticmethod
+    def save_evaluation_results(results_df: pd.DataFrame, output_dir: str, set_name: str = 'test'):
+        """Save evaluation results to files.
+
+        Args:
+            results_df: DataFrame with evaluation metrics
+            output_dir: Directory to save results
+            set_name: Name of the evaluated set
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save detailed results
+        results_path = output_dir / f"{set_name}_evaluation_results.csv"
+        results_df.to_csv(results_path, index=False)
+        print(f"💾 Detailed results saved to {results_path}")
+
+        # Save summary statistics
+        summary = {
+            'evaluation_type': f'{set_name}_set',
+            'n_buildings': len(results_df),
+            'total_sequences': int(results_df['n_sequences'].sum()),
+            'forecast_metrics': {
+                'rmse_mean': float(results_df['forecast_rmse'].mean()),
+                'rmse_std': float(results_df['forecast_rmse'].std()),
+                'rmse_median': float(results_df['forecast_rmse'].median()),
+                'mae_mean': float(results_df['forecast_mae'].mean()),
+                'mae_std': float(results_df['forecast_mae'].std()),
+                'mape_mean': float(results_df['forecast_mape'].mean()),
+                'mape_std': float(results_df['forecast_mape'].std()),
+                'r2_mean': float(results_df['forecast_r2'].mean()),
+                'r2_std': float(results_df['forecast_r2'].std())
+            },
+            'anomaly_metrics': {
+                'f1_mean': float(results_df['anomaly_f1'].mean()),
+                'f1_std': float(results_df['anomaly_f1'].std()),
+                'precision_mean': float(results_df['anomaly_precision'].mean()),
+                'precision_std': float(results_df['anomaly_precision'].std()),
+                'recall_mean': float(results_df['anomaly_recall'].mean()),
+                'recall_std': float(results_df['anomaly_recall'].std()),
+                'roc_auc_mean': float(results_df['anomaly_roc_auc'].mean()),
+                'roc_auc_std': float(results_df['anomaly_roc_auc'].std())
+            }
+        }
+
+        summary_path = output_dir / f"{set_name}_evaluation_summary.json"
+        with open(summary_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        print(f"💾 Summary statistics saved to {summary_path}")

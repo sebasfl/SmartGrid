@@ -1,12 +1,16 @@
 # src/models/__init__.py
-from .transformer import TransformerEncoder, PositionalEncoding
-from .mtl_heads import AnomalyDetectionHead, ForecastingHead
-from .losses import MTLLoss
+from .cnn_lstm import (
+    CNNFeatureExtractor,
+    LSTMTemporalEncoder,
+    ForecastingHead,
+    HybridCNNLSTM,
+    build_cnn_lstm_model
+)
 
 __all__ = [
-    'TransformerEncoder',
-    'PositionalEncoding',
-    'AnomalyDetectionHead',
+    'CNNFeatureExtractor',
+    'LSTMTemporalEncoder',
     'ForecastingHead',
-    'MTLLoss'
+    'HybridCNNLSTM',
+    'build_cnn_lstm_model'
 ]

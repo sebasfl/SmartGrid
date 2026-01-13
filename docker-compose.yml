@@ -1,6 +1,8 @@
 services:
   # GPU-enabled trainer for MTL Transformer
   trainer-gpu:
+    runtime: nvidia
+    gpus: all
     tty: true
     stdin_open: true
     build:
@@ -20,6 +22,7 @@ services:
       - TF_CPP_MIN_LOG_LEVEL=2
       - CUDA_VISIBLE_DEVICES=0
       - LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+      - NUMBA_CUDA_ENABLE_PYNVJITLINK=1
     volumes:
       - ./data:/app/data
       - ./models:/app/models

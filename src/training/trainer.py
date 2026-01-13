@@ -1,23 +1,23 @@
 # src/training/trainer.py
-# Multi-Task Learning Trainer with GPU optimization
+# CNN-LSTM Trainer with GPU optimization
 import tensorflow as tf
 from tensorflow.keras import optimizers, mixed_precision
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import json
 import numpy as np
 
 
-class MTLTrainer:
-    """Multi-Task Learning trainer with GPU support and mixed precision."""
+class CNNLSTMTrainer:
+    """CNN-LSTM trainer with GPU support and mixed precision."""
 
     def __init__(self, model, loss_fn, optimizer_config, training_config, metrics=None):
-        """Initialize MTL trainer.
+        """Initialize CNN-LSTM trainer.
 
         Args:
-            model: MTL model (encoder + heads)
-            loss_fn: MTL loss function
+            model: CNN-LSTM model
+            loss_fn: Loss function (e.g., MSE, MAE, Huber)
             optimizer_config: Optimizer configuration from config.py
             training_config: Training configuration from config.py
             metrics: Optional dict of metric functions
@@ -44,11 +44,7 @@ class MTLTrainer:
         self.best_val_loss = float('inf')
         self.history = {
             'train_loss': [],
-            'train_anomaly_loss': [],
-            'train_forecast_loss': [],
             'val_loss': [],
-            'val_anomaly_loss': [],
-            'val_forecast_loss': [],
             'learning_rate': []
         }
 
@@ -80,33 +76,32 @@ class MTLTrainer:
 
         return optimizer
 
-    # @tf.function  # Disabled for compatibility with Python generators
-    def train_step(self, x, y_anomaly, y_forecast):
+    # @tf.function disabled to avoid XLA/cuDNN 9.0+ compatibility issues
+    # XLA requires explicit sequence_length for RNNs in cuDNN 9.0+
+    # Disabling adds ~10-15% overhead but ensures compatibility
+    # @tf.function
+    def train_step(self, x, y_forecast):
         """Single training step with gradient computation.
 
         Args:
             x: Input sequences [batch, seq_len, features]
-            y_anomaly: Anomaly labels [batch, 1]
             y_forecast: Forecast targets [batch, horizon]
 
         Returns:
-            Tuple of (total_loss, anomaly_loss, forecast_loss)
+            Loss value
         """
         with tf.GradientTape() as tape:
             # Forward pass
-            anomaly_pred, forecast_pred = self.model(x, training=True)
+            forecast_pred = self.model(x, training=True)
 
             # Compute loss
-            total_loss, loss_anomaly, loss_forecast = self.loss_fn(
-                (y_anomaly, y_forecast),
-                (anomaly_pred, forecast_pred)
-            )
+            loss = self.loss_fn(y_forecast, forecast_pred)
 
             # Scale loss for mixed precision
             if self.training_config.use_mixed_precision:
-                scaled_loss = self.optimizer.get_scaled_loss(total_loss)
+                scaled_loss = self.optimizer.get_scaled_loss(loss)
             else:
-                scaled_loss = total_loss
+                scaled_loss = loss
 
         # Compute gradients
         gradients = tape.gradient(scaled_loss, self.model.trainable_variables)
@@ -124,30 +119,27 @@ class MTLTrainer:
         # Apply gradients
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
-        return total_loss, loss_anomaly, loss_forecast
+        return loss
 
-    # @tf.function  # Disabled for compatibility with Python generators
-    def val_step(self, x, y_anomaly, y_forecast):
+    # @tf.function disabled to avoid XLA/cuDNN 9.0+ compatibility issues
+    # @tf.function
+    def val_step(self, x, y_forecast):
         """Single validation step.
 
         Args:
             x: Input sequences [batch, seq_len, features]
-            y_anomaly: Anomaly labels [batch, 1]
             y_forecast: Forecast targets [batch, horizon]
 
         Returns:
-            Tuple of (total_loss, anomaly_loss, forecast_loss)
+            Loss value
         """
         # Forward pass (no training mode)
-        anomaly_pred, forecast_pred = self.model(x, training=False)
+        forecast_pred = self.model(x, training=False)
 
         # Compute loss
-        total_loss, loss_anomaly, loss_forecast = self.loss_fn(
-            (y_anomaly, y_forecast),
-            (anomaly_pred, forecast_pred)
-        )
+        loss = self.loss_fn(y_forecast, forecast_pred)
 
-        return total_loss, loss_anomaly, loss_forecast
+        return loss
 
     def train_epoch(self, train_dataset):
         """Train for one epoch.
@@ -158,43 +150,38 @@ class MTLTrainer:
         Returns:
             Dict of epoch metrics
         """
-        epoch_losses = {'total': [], 'anomaly': [], 'forecast': []}
+        epoch_losses = []
 
         start_time = time.time()
         num_batches = 0
 
-        for batch_idx, (x, y_anomaly, y_forecast) in enumerate(train_dataset):
+        for batch_idx, (x, y_forecast) in enumerate(train_dataset):
             # Training step
-            total_loss, loss_a, loss_f = self.train_step(x, y_anomaly, y_forecast)
+            loss = self.train_step(x, y_forecast)
 
-            # Check for NaN in loss (should not happen with cleaned data)
-            if tf.math.is_nan(total_loss):
+            # Check for NaN in loss
+            if tf.math.is_nan(loss):
                 print(f"\n❌ ERROR: NaN loss detected at batch {batch_idx + 1}!")
-                print(f"   Anomaly loss: {loss_a}, Forecast loss: {loss_f}")
                 print(f"   This indicates a numerical instability issue.")
                 print(f"   Stopping training...")
                 raise ValueError("Training stopped due to NaN loss")
 
-            # Record losses
-            epoch_losses['total'].append(float(total_loss))
-            epoch_losses['anomaly'].append(float(loss_a))
-            epoch_losses['forecast'].append(float(loss_f))
+            # Record loss
+            epoch_losses.append(float(loss))
 
             self.global_step += 1
             num_batches += 1
 
             # Log progress
             if (batch_idx + 1) % self.training_config.log_freq == 0:
-                avg_loss = np.mean(epoch_losses['total'][-self.training_config.log_freq:])
+                avg_loss = np.mean(epoch_losses[-self.training_config.log_freq:])
                 elapsed = time.time() - start_time
                 batches_per_sec = num_batches / elapsed
                 print(f"  Batch {batch_idx + 1}: Loss={avg_loss:.4f} ({batches_per_sec:.1f} batch/s)")
 
         # Compute epoch averages
         metrics = {
-            'loss': np.mean(epoch_losses['total']),
-            'anomaly_loss': np.mean(epoch_losses['anomaly']),
-            'forecast_loss': np.mean(epoch_losses['forecast']),
+            'loss': np.mean(epoch_losses),
             'time': time.time() - start_time
         }
 
@@ -209,19 +196,14 @@ class MTLTrainer:
         Returns:
             Dict of validation metrics
         """
-        val_losses = {'total': [], 'anomaly': [], 'forecast': []}
+        val_losses = []
 
-        for x, y_anomaly, y_forecast in val_dataset:
-            total_loss, loss_a, loss_f = self.val_step(x, y_anomaly, y_forecast)
-
-            val_losses['total'].append(float(total_loss))
-            val_losses['anomaly'].append(float(loss_a))
-            val_losses['forecast'].append(float(loss_f))
+        for x, y_forecast in val_dataset:
+            loss = self.val_step(x, y_forecast)
+            val_losses.append(float(loss))
 
         metrics = {
-            'loss': np.mean(val_losses['total']),
-            'anomaly_loss': np.mean(val_losses['anomaly']),
-            'forecast_loss': np.mean(val_losses['forecast'])
+            'loss': np.mean(val_losses)
         }
 
         return metrics
@@ -241,7 +223,7 @@ class MTLTrainer:
         epochs = self.training_config.epochs
 
         print(f"\n{'='*70}")
-        print(f"🚀 STARTING MTL TRAINING")
+        print(f"🚀 STARTING CNN-LSTM TRAINING")
         print(f"{'='*70}")
         print(f"Epochs: {epochs}")
         print(f"Optimizer: {self.optimizer_config.optimizer_type}")
@@ -272,13 +254,9 @@ class MTLTrainer:
 
                 # Record history
                 self.history['train_loss'].append(train_metrics['loss'])
-                self.history['train_anomaly_loss'].append(train_metrics['anomaly_loss'])
-                self.history['train_forecast_loss'].append(train_metrics['forecast_loss'])
 
                 if val_metrics:
                     self.history['val_loss'].append(val_metrics['loss'])
-                    self.history['val_anomaly_loss'].append(val_metrics['anomaly_loss'])
-                    self.history['val_forecast_loss'].append(val_metrics['forecast_loss'])
 
                 # Get current learning rate
                 if isinstance(self.optimizer, mixed_precision.LossScaleOptimizer):
@@ -289,14 +267,10 @@ class MTLTrainer:
 
                 # Print epoch summary
                 epoch_time = time.time() - epoch_start
-                print(f"\nTrain - Loss: {train_metrics['loss']:.4f}, "
-                      f"Anomaly: {train_metrics['anomaly_loss']:.4f}, "
-                      f"Forecast: {train_metrics['forecast_loss']:.4f}")
+                print(f"\nTrain - Loss: {train_metrics['loss']:.4f}")
 
                 if val_metrics:
-                    print(f"Val   - Loss: {val_metrics['loss']:.4f}, "
-                          f"Anomaly: {val_metrics['anomaly_loss']:.4f}, "
-                          f"Forecast: {val_metrics['forecast_loss']:.4f}")
+                    print(f"Val   - Loss: {val_metrics['loss']:.4f}")
 
                 print(f"Time: {epoch_time:.2f}s, LR: {lr:.6f}")
 
@@ -346,38 +320,32 @@ class MTLTrainer:
 
 
 if __name__ == "__main__":
-    print("Testing MTLTrainer...")
+    print("Testing CNNLSTMTrainer...")
 
-    # Create dummy model and data
-    from ..models.transformer import TransformerEncoder
-    from ..models.mtl_heads import MTLModel, AnomalyDetectionHead, ForecastingHead
-    from ..models.losses import MTLLoss
-    from ..config import Config
+    from src.models.cnn_lstm import build_cnn_lstm_model
+    from src.config import Config
 
     config = Config()
 
     # Build model
-    encoder = TransformerEncoder(
-        num_layers=2,
-        d_model=64,
-        num_heads=4,
-        ff_dim=128,
-        input_dim=8,
-        dropout=0.1
+    model = build_cnn_lstm_model(
+        input_shape=(480, 8),
+        forecast_horizon=240,
+        learning_rate=config.optimizer.learning_rate
     )
-    anomaly_head = AnomalyDetectionHead(hidden_dims=[32])
-    forecast_head = ForecastingHead(forecast_horizon=24, hidden_dims=[64])
-    model = MTLModel(encoder, anomaly_head, forecast_head)
 
     # Create trainer
-    loss_fn = MTLLoss(alpha=0.3, beta=0.7)
-    trainer = MTLTrainer(model, loss_fn, config.optimizer, config.training)
+    trainer = CNNLSTMTrainer(
+        model=model,
+        loss_fn=tf.keras.losses.MeanSquaredError(),
+        optimizer_config=config.optimizer,
+        training_config=config.training
+    )
 
     # Create dummy dataset
-    x = tf.random.normal((100, 168, 8))
-    y_anomaly = tf.random.uniform((100, 1), maxval=2, dtype=tf.int32)
-    y_forecast = tf.random.uniform((100, 24))
+    x = tf.random.normal((100, 480, 8))
+    y_forecast = tf.random.normal((100, 240))
 
-    dataset = tf.data.Dataset.from_tensor_slices((x, y_anomaly, y_forecast)).batch(32)
+    dataset = tf.data.Dataset.from_tensor_slices((x, y_forecast)).batch(8)
 
-    print("✅ MTLTrainer initialized successfully!")
+    print("✅ CNNLSTMTrainer initialized successfully!")

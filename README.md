@@ -164,13 +164,6 @@ RAPIDS (cuDF/CuPy) is optional and only used for preprocessing. The pipeline wor
 - **Period**: 2016-2017 (1-2 years per building)
 - **Meter**: Electricity consumption only
 
-**Citation**:
-```
-Miller, C., Kathirgamanathan, A., Picchetti, B. et al.
-The Building Data Genome Project 2, energy meter data from the ASHRAE Great Energy Predictor III competition.
-Sci Data 7, 368 (2020). https://doi.org/10.1038/s41597-020-00712-x
-```
-
 **GitHub**: https://github.com/buds-lab/building-data-genome-project-2
 
 ## 🛠️ Technology Stack

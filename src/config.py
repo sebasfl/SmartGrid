@@ -1,7 +1,7 @@
 # src/config.py
-# Centralized configuration for MTL Transformer
+# Centralized configuration for Hybrid CNN-LSTM model
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List
 import json
 from pathlib import Path
 
@@ -15,9 +15,11 @@ class DataConfig:
     model_dir: str = "/app/models"
 
     # Sequence generation
-    lookback_window: int = 168  # 7 days in hours
-    forecast_horizon: int = 24  # 1 day ahead
-    stride: int = 1  # Sliding window stride
+    # Note: With 3-hour granularity, divide original hourly values by 3
+    # Use 2x lookback data relative to forecast horizon (2 months to predict 1 month)
+    forecast_horizon: int = 240  # 1 month ahead (30 days * 8 intervals/day with 3h granularity)
+    lookback_window: int = 480  # 2 months lookback (60 days * 8 intervals/day with 3h granularity)
+    stride: int = 8  # Sliding window stride (1 day with 3h intervals = 8 intervals)
 
     # Features
     time_features: List[str] = field(default_factory=lambda: [
@@ -31,59 +33,55 @@ class DataConfig:
     val_ratio: float = 0.15
     test_ratio: float = 0.15
 
-    # Anomaly labeling
-    anomaly_method: str = 'iqr'  # 'iqr' or 'zscore'
-    iqr_multiplier: float = 1.5
-    zscore_threshold: float = 3.0
+
+@dataclass
+class CNNConfig:
+    """CNN feature extractor configuration."""
+    # Convolutional layers
+    filters: List[int] = field(default_factory=lambda: [64, 128, 128])
+    kernel_sizes: List[int] = field(default_factory=lambda: [3, 3, 3])
+
+    # Regularization
+    dropout: float = 0.2
+    use_batch_norm: bool = True
+
+    # Activation
+    activation: str = 'relu'  # 'relu', 'gelu', 'swish'
 
 
 @dataclass
-class TransformerConfig:
-    """Transformer encoder configuration."""
-    d_model: int = 128  # Embedding dimension
-    num_heads: int = 8  # Multi-head attention heads
-    num_layers: int = 4  # Encoder layers
-    ff_dim: int = 512  # Feed-forward hidden dimension
-    dropout: float = 0.1
-    activation: str = 'gelu'  # 'relu', 'gelu', 'swish'
-    use_positional_encoding: bool = True
-    positional_encoding_type: str = 'sinusoidal'  # 'sinusoidal' or 'learnable'
-    max_seq_length: int = 512
+class LSTMConfig:
+    """LSTM temporal encoder configuration."""
+    # LSTM layers
+    units: List[int] = field(default_factory=lambda: [128, 64])
+
+    # Regularization
+    dropout: float = 0.2
+    recurrent_dropout: float = 0.1
+
+    # Architecture
+    use_bidirectional: bool = True
 
 
 @dataclass
-class MTLHeadsConfig:
-    """Multi-task learning heads configuration."""
-    # Anomaly detection head
-    anomaly_hidden_dims: List[int] = field(default_factory=lambda: [64, 32])
-    anomaly_dropout: float = 0.3
-    anomaly_activation: str = 'relu'
+class ForecastHeadConfig:
+    """Forecasting head configuration."""
+    # Dense layers
+    hidden_dims: List[int] = field(default_factory=lambda: [128, 64])
 
-    # Forecasting head
-    forecast_hidden_dims: List[int] = field(default_factory=lambda: [128, 64])
-    forecast_dropout: float = 0.2
-    forecast_activation: str = 'relu'
-    use_decoder: bool = False  # Use transformer decoder for forecasting
+    # Regularization
+    dropout: float = 0.2
+
+    # Activation
+    activation: str = 'relu'
 
 
 @dataclass
 class LossConfig:
     """Loss function configuration."""
-    # Multi-task loss weights
-    alpha_anomaly: float = 0.3  # Weight for anomaly detection loss
-    beta_forecast: float = 0.7  # Weight for forecasting loss
-
-    # Anomaly loss
-    anomaly_loss_type: str = 'bce'  # 'bce' or 'focal'
-    focal_alpha: float = 0.25  # For focal loss
-    focal_gamma: float = 2.0
-
     # Forecast loss
     forecast_loss_type: str = 'mse'  # 'mse', 'mae', 'huber'
     huber_delta: float = 1.0
-
-    # Uncertainty weighting (Kendall et al. 2018)
-    use_uncertainty_weighting: bool = False
 
 
 @dataclass
@@ -110,7 +108,7 @@ class OptimizerConfig:
 class TrainingConfig:
     """Training loop configuration."""
     # Basic training
-    batch_size: int = 32
+    batch_size: int = 8  # Reduced due to longer sequences
     epochs: int = 50
     validation_freq: int = 1  # Validate every N epochs
 
@@ -125,7 +123,7 @@ class TrainingConfig:
     # Early stopping
     early_stopping_patience: int = 10
     early_stopping_min_delta: float = 1e-4
-    early_stopping_monitor: str = 'val_loss'  # 'val_loss', 'val_forecast_rmse', etc.
+    early_stopping_monitor: str = 'val_loss'  # 'val_loss', 'val_mae', etc.
 
     # Logging
     log_freq: int = 100  # Log every N batches
@@ -139,8 +137,9 @@ class TrainingConfig:
 class Config:
     """Master configuration combining all sub-configs."""
     data: DataConfig = field(default_factory=DataConfig)
-    transformer: TransformerConfig = field(default_factory=TransformerConfig)
-    mtl_heads: MTLHeadsConfig = field(default_factory=MTLHeadsConfig)
+    cnn: CNNConfig = field(default_factory=CNNConfig)
+    lstm: LSTMConfig = field(default_factory=LSTMConfig)
+    forecast_head: ForecastHeadConfig = field(default_factory=ForecastHeadConfig)
     loss: LossConfig = field(default_factory=LossConfig)
     optimizer: OptimizerConfig = field(default_factory=OptimizerConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
@@ -153,8 +152,9 @@ class Config:
 
         return cls(
             data=DataConfig(**config_dict.get('data', {})),
-            transformer=TransformerConfig(**config_dict.get('transformer', {})),
-            mtl_heads=MTLHeadsConfig(**config_dict.get('mtl_heads', {})),
+            cnn=CNNConfig(**config_dict.get('cnn', {})),
+            lstm=LSTMConfig(**config_dict.get('lstm', {})),
+            forecast_head=ForecastHeadConfig(**config_dict.get('forecast_head', {})),
             loss=LossConfig(**config_dict.get('loss', {})),
             optimizer=OptimizerConfig(**config_dict.get('optimizer', {})),
             training=TrainingConfig(**config_dict.get('training', {}))
@@ -164,8 +164,9 @@ class Config:
         """Save configuration to JSON file."""
         config_dict = {
             'data': self.data.__dict__,
-            'transformer': self.transformer.__dict__,
-            'mtl_heads': self.mtl_heads.__dict__,
+            'cnn': self.cnn.__dict__,
+            'lstm': self.lstm.__dict__,
+            'forecast_head': self.forecast_head.__dict__,
             'loss': self.loss.__dict__,
             'optimizer': self.optimizer.__dict__,
             'training': self.training.__dict__
@@ -181,8 +182,9 @@ class Config:
 
         for section_name, section in [
             ("DATA", self.data),
-            ("TRANSFORMER", self.transformer),
-            ("MTL HEADS", self.mtl_heads),
+            ("CNN", self.cnn),
+            ("LSTM", self.lstm),
+            ("FORECAST HEAD", self.forecast_head),
             ("LOSS", self.loss),
             ("OPTIMIZER", self.optimizer),
             ("TRAINING", self.training)
@@ -205,8 +207,8 @@ if __name__ == "__main__":
     config = Config()
 
     # Customize if needed
-    config.transformer.d_model = 256
-    config.training.batch_size = 64
+    config.cnn.filters = [128, 256, 256]
+    config.training.batch_size = 16
 
     # Save to JSON
     config.to_json("config_example.json")

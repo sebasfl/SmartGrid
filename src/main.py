@@ -1,11 +1,21 @@
 # src/main.py
-# Main training script for MTL Transformer
+# Main training script for Hybrid CNN-LSTM model
+import os
+
+# ============================================================================
+# CRITICAL: Disable cuDNN for RNNs (cuDNN 9.0+ compatibility)
+# MUST BE SET BEFORE IMPORTING TENSORFLOW
+# ============================================================================
+os.environ['TF_CUDNN_USE_AUTOTUNE'] = '0'
+os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+
 import argparse
 import tensorflow as tf
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import json
+from typing import List
 from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings('ignore')
@@ -33,15 +43,12 @@ except RuntimeError as e:
 
 # Local imports
 from .config import Config
-from .models.transformer import TransformerEncoder
-from .models.mtl_heads import MTLModel, AnomalyDetectionHead, ForecastingHead
-from .models.losses import MTLLoss
-from .training.trainer import MTLTrainer
+from .models.cnn_lstm import build_cnn_lstm_model
+from .training.trainer import CNNLSTMTrainer
 from .training.callbacks import (
     EarlyStopping, ModelCheckpoint, ReduceLROnPlateau,
     TensorBoardLogger, TimerCallback
 )
-from .evaluation.metrics import MTLMetrics
 
 
 def check_gpu_availability():
@@ -91,14 +98,16 @@ def create_sequences(df: pd.DataFrame, building_id: str, lookback: int,
         stride: Stride for sliding window
 
     Returns:
-        Tuple of (X_sequences, y_anomaly, y_forecast)
+        Tuple of (X_sequences, y_forecast)
+            - X_sequences: [num_seqs, lookback, 8] - input sequences
+            - y_forecast: [num_seqs, horizon] - future values to predict
     """
     # Filter building data
     building_df = df[df['building_id'] == building_id].copy()
     building_df = building_df.sort_values('timestamp_local')
 
     if len(building_df) < lookback + horizon:
-        return None, None, None
+        return None, None
 
     # Feature columns (exclude metadata)
     feature_cols = ['hour', 'day_of_week', 'month', 'is_weekend',
@@ -109,75 +118,77 @@ def create_sequences(df: pd.DataFrame, building_id: str, lookback: int,
 
     # Create sequences
     X_sequences = []
-    y_anomaly = []
     y_forecast = []
 
     for i in range(0, len(features) - lookback - horizon + 1, stride):
         # Input sequence
         X_seq = features[i:i + lookback]
 
-        # Anomaly label: check if there are anomalies in the lookback window
-        # Using IQR method for labeling
-        values = X_seq[:, -1]  # Last column is 'value'
-        Q1, Q3 = np.percentile(values, [25, 75])
-        IQR = Q3 - Q1
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
-        has_anomaly = np.any((values < lower_bound) | (values > upper_bound))
-        y_anom = 1.0 if has_anomaly else 0.0
-
         # Forecast target: next 'horizon' values
         y_fore = features[i + lookback:i + lookback + horizon, -1]
 
         X_sequences.append(X_seq)
-        y_anomaly.append(y_anom)
         y_forecast.append(y_fore)
 
     if len(X_sequences) == 0:
-        return None, None, None
+        return None, None
 
     X = np.array(X_sequences, dtype=np.float32)
-    y_a = np.array(y_anomaly, dtype=np.float32).reshape(-1, 1)
     y_f = np.array(y_forecast, dtype=np.float32)
 
-    return X, y_a, y_f
+    return X, y_f
 
 
-def prepare_mtl_dataset(df: pd.DataFrame, config: Config,
-                       split: str = 'train', scaler=None, max_buildings: int = None) -> tf.data.Dataset:
-    """Prepare TensorFlow dataset for MTL training with memory-efficient batch processing.
+def prepare_dataset(df: pd.DataFrame, config: Config,
+                   split: str = 'train', scaler=None, max_buildings: int = None,
+                   building_ids: List[str] = None, user_specified_n: bool = False) -> tf.data.Dataset:
+    """Prepare TensorFlow dataset for CNN-LSTM training with memory-efficient batch processing.
 
     Args:
         df: Preprocessed dataframe
         config: Configuration object
-        split: 'train', 'val', or 'test'
+        split: 'train', 'val', or 'test' (used for logging only if building_ids provided)
         scaler: StandardScaler for normalization (required for val/test)
         max_buildings: Maximum number of buildings to use (for memory efficiency)
+        building_ids: Optional list of building IDs to use. If None, uses random split.
+        user_specified_n: True if user specified --n_buildings (for better logging)
 
     Returns:
-        TensorFlow dataset
+        TensorFlow dataset and scaler
     """
     print(f"\n📦 Preparing {split} dataset...")
 
-    building_ids = df['building_id'].unique()
-    n_buildings = len(building_ids)
+    # Use provided building IDs or fall back to random split
+    if building_ids is not None:
+        split_buildings = np.array(building_ids)
+        print(f"   Using provided building list: {len(split_buildings)} buildings")
+    else:
+        # Legacy random split (if no building_split.json provided)
+        all_building_ids = df['building_id'].unique()
+        n_buildings = len(all_building_ids)
 
-    # Split buildings by train/val/test
-    np.random.shuffle(building_ids)
-    train_end = int(n_buildings * config.data.train_ratio)
-    val_end = int(n_buildings * (config.data.train_ratio + config.data.val_ratio))
+        np.random.shuffle(all_building_ids)
+        train_end = int(n_buildings * config.data.train_ratio)
+        val_end = int(n_buildings * (config.data.train_ratio + config.data.val_ratio))
 
-    if split == 'train':
-        split_buildings = building_ids[:train_end]
-    elif split == 'val':
-        split_buildings = building_ids[train_end:val_end]
-    else:  # test
-        split_buildings = building_ids[val_end:]
+        if split == 'train':
+            split_buildings = all_building_ids[:train_end]
+        elif split == 'val':
+            split_buildings = all_building_ids[train_end:val_end]
+        else:  # test
+            split_buildings = all_building_ids[val_end:]
 
-    # Limit buildings for memory efficiency
+        print(f"   Using random split: {len(split_buildings)} buildings")
+
+    # Limit buildings for memory efficiency or user specification
     if max_buildings and len(split_buildings) > max_buildings:
+        original_count = len(split_buildings)
         split_buildings = split_buildings[:max_buildings]
-        print(f"   🔍 Limited to {max_buildings} buildings (memory optimization)")
+
+        if user_specified_n:
+            print(f"   🎯 Using first {max_buildings} buildings (user-specified)")
+        else:
+            print(f"   🔍 Limited to first {max_buildings} of {original_count} buildings (memory optimization)")
 
     print(f"   {split.capitalize()} buildings: {len(split_buildings)}")
 
@@ -189,7 +200,7 @@ def prepare_mtl_dataset(df: pd.DataFrame, config: Config,
 
         # Fit incrementally to avoid memory issues
         for i, building_id in enumerate(sample_buildings):
-            X, _, _ = create_sequences(
+            X, _ = create_sequences(
                 df, building_id,
                 lookback=config.data.lookback_window,
                 horizon=config.data.forecast_horizon,
@@ -215,11 +226,10 @@ def prepare_mtl_dataset(df: pd.DataFrame, config: Config,
         """Generate sequences on-demand to avoid loading all data in memory."""
         import gc
         total_sequences = 0
-        anomaly_count = 0
         skipped_nan = 0
 
         for i, building_id in enumerate(split_buildings):
-            X, y_a, y_f = create_sequences(
+            X, y_f = create_sequences(
                 df, building_id,
                 lookback=config.data.lookback_window,
                 horizon=config.data.forecast_horizon,
@@ -245,12 +255,11 @@ def prepare_mtl_dataset(df: pd.DataFrame, config: Config,
                         skipped_nan += 1
                         continue
 
-                    yield X[j], y_a[j], y_f[j]
+                    yield X[j], y_f[j]
                     total_sequences += 1
-                    anomaly_count += y_a[j][0]
 
                 # Free memory after processing building
-                del X, y_a, y_f, X_reshaped, X_normalized
+                del X, y_f, X_reshaped, X_normalized
 
             if (i + 1) % 50 == 0:
                 print(f"   Processed {i + 1}/{len(split_buildings)} buildings... (skipped {skipped_nan} NaN sequences)")
@@ -260,7 +269,6 @@ def prepare_mtl_dataset(df: pd.DataFrame, config: Config,
     input_dim = len(config.data.time_features) + 1
     output_signature = (
         tf.TensorSpec(shape=(config.data.lookback_window, input_dim), dtype=tf.float32),
-        tf.TensorSpec(shape=(1,), dtype=tf.float32),
         tf.TensorSpec(shape=(config.data.forecast_horizon,), dtype=tf.float32)
     )
 
@@ -280,64 +288,6 @@ def prepare_mtl_dataset(df: pd.DataFrame, config: Config,
     print(f"   ✅ {split.capitalize()} dataset created (lazy loading enabled)")
 
     return dataset, scaler
-
-
-def build_mtl_model(config: Config) -> MTLModel:
-    """Build complete MTL model.
-
-    Args:
-        config: Configuration object
-
-    Returns:
-        MTL model
-    """
-    print("\n🏗️  Building MTL model...")
-
-    # Input dimension: number of features
-    input_dim = len(config.data.time_features) + 1  # time features + value
-
-    # Transformer encoder
-    encoder = TransformerEncoder(
-        num_layers=config.transformer.num_layers,
-        d_model=config.transformer.d_model,
-        num_heads=config.transformer.num_heads,
-        ff_dim=config.transformer.ff_dim,
-        input_dim=input_dim,
-        dropout=config.transformer.dropout,
-        activation=config.transformer.activation,
-        use_positional_encoding=config.transformer.use_positional_encoding,
-        positional_encoding_type=config.transformer.positional_encoding_type,
-        max_seq_length=config.transformer.max_seq_length
-    )
-
-    # Anomaly detection head
-    anomaly_head = AnomalyDetectionHead(
-        hidden_dims=config.mtl_heads.anomaly_hidden_dims,
-        dropout=config.mtl_heads.anomaly_dropout,
-        activation=config.mtl_heads.anomaly_activation
-    )
-
-    # Forecasting head
-    forecast_head = ForecastingHead(
-        forecast_horizon=config.data.forecast_horizon,
-        hidden_dims=config.mtl_heads.forecast_hidden_dims,
-        dropout=config.mtl_heads.forecast_dropout,
-        activation=config.mtl_heads.forecast_activation,
-        use_decoder=config.mtl_heads.use_decoder
-    )
-
-    # Complete MTL model
-    model = MTLModel(encoder, anomaly_head, forecast_head)
-
-    # Build model with dummy input
-    dummy_input = tf.random.normal((1, config.data.lookback_window, input_dim))
-    _ = model(dummy_input, training=False)
-
-    # Print model summary
-    total_params = sum([tf.size(var).numpy() for var in model.trainable_variables])
-    print(f"   Total parameters: {total_params:,}")
-
-    return model
 
 
 def main(args):
@@ -391,39 +341,112 @@ def main(args):
         df = df[~inf_mask]
         print(f"   After cleaning: {len(df):,} records")
 
+    # Load building split if provided (from data quality analysis)
+    train_building_ids = None
+    val_building_ids = None
+    test_building_ids = None
+
+    if args.building_split:
+        print(f"\n📂 Loading building split from {args.building_split}...")
+        with open(args.building_split, 'r') as f:
+            building_split = json.load(f)
+
+        train_building_ids = building_split.get('train', [])
+        val_building_ids = building_split.get('validation', [])
+        test_building_ids = building_split.get('test', [])
+
+        print(f"   Training buildings:   {len(train_building_ids)}")
+        print(f"   Validation buildings: {len(val_building_ids)}")
+        print(f"   Test buildings:       {len(test_building_ids)} (reserved for final evaluation)")
+
+        # Filter dataframe to only include high-quality buildings (train + val only)
+        # Test buildings are kept separate for final evaluation
+        training_quality_buildings = train_building_ids + val_building_ids
+        df = df[df['building_id'].isin(training_quality_buildings)]
+        print(f"   Filtered to high-quality buildings (train+val): {len(df):,} records")
+
     # Prepare datasets (memory-efficient batch processing)
-    # Set to None to use ALL buildings (requires 6GB+ RAM)
-    # Set to a number to limit (200-500 recommended for 2-4GB RAM)
-    max_train_buildings = None if args.use_full_dataset else 250
-    max_val_buildings = None if args.use_full_dataset else 50
+    # Determine max buildings based on user input
+    user_specified_n = args.n_buildings is not None
 
-    if args.use_full_dataset:
-        print(f"\n⚙️  Using FULL dataset (all {df['building_id'].nunique()} buildings)")
+    if args.n_buildings is not None:
+        # User specified exact number of buildings
+        max_train_buildings = args.n_buildings
+        max_val_buildings = max(int(args.n_buildings * 0.25), 1)  # 25% of train buildings, min 1
+        print(f"\n⚙️  User Selection: First {max_train_buildings} train buildings and {max_val_buildings} validation buildings")
+    elif args.use_full_dataset:
+        # Use ALL buildings (requires 6GB+ RAM)
+        max_train_buildings = None
+        max_val_buildings = None
+        print(f"\n⚙️  Using FULL dataset (all available buildings)")
     else:
-        print(f"\n⚙️  Memory optimization: Using max {max_train_buildings} train buildings, {max_val_buildings} val buildings")
+        # Default: memory-optimized limits
+        max_train_buildings = 150
+        max_val_buildings = 40
+        print(f"\n⚙️  Memory optimization: Limited to {max_train_buildings} train / {max_val_buildings} val buildings")
 
-    train_dataset, scaler = prepare_mtl_dataset(df, config, split='train', max_buildings=max_train_buildings)
+    train_dataset, scaler = prepare_dataset(
+        df, config, split='train',
+        max_buildings=max_train_buildings,
+        building_ids=train_building_ids,
+        user_specified_n=user_specified_n
+    )
 
     # Force garbage collection before validation dataset
     import gc
     gc.collect()
 
-    val_dataset, _ = prepare_mtl_dataset(df, config, split='val', scaler=scaler, max_buildings=max_val_buildings)
-
-    # Build model
-    model = build_mtl_model(config)
-
-    # Setup loss function
-    loss_fn = MTLLoss(
-        alpha=config.loss.alpha_anomaly,
-        beta=config.loss.beta_forecast,
-        anomaly_loss_type=config.loss.anomaly_loss_type,
-        forecast_loss_type=config.loss.forecast_loss_type,
-        use_uncertainty_weighting=config.loss.use_uncertainty_weighting
+    val_dataset, _ = prepare_dataset(
+        df, config, split='val',
+        scaler=scaler,
+        max_buildings=max_val_buildings,
+        building_ids=val_building_ids,
+        user_specified_n=user_specified_n
     )
 
+    # Build model
+    print("\n🏗️  Building CNN-LSTM model...")
+    input_dim = len(config.data.time_features) + 1
+
+    model = build_cnn_lstm_model(
+        input_shape=(config.data.lookback_window, input_dim),
+        forecast_horizon=config.data.forecast_horizon,
+        cnn_config={
+            'filters': config.cnn.filters,
+            'kernel_sizes': config.cnn.kernel_sizes,
+            'dropout': config.cnn.dropout,
+            'activation': config.cnn.activation,
+            'use_batch_norm': config.cnn.use_batch_norm
+        },
+        lstm_config={
+            'units': config.lstm.units,
+            'dropout': config.lstm.dropout,
+            'recurrent_dropout': config.lstm.recurrent_dropout,
+            'use_bidirectional': config.lstm.use_bidirectional
+        },
+        forecast_config={
+            'hidden_dims': config.forecast_head.hidden_dims,
+            'dropout': config.forecast_head.dropout,
+            'activation': config.forecast_head.activation
+        },
+        learning_rate=config.optimizer.learning_rate,
+        loss=config.loss.forecast_loss_type
+    )
+
+    print(f"   Total parameters: {model.count_params():,}")
+
+    # Setup loss function
+    if config.loss.forecast_loss_type == 'mse':
+        loss_fn = tf.keras.losses.MeanSquaredError()
+    elif config.loss.forecast_loss_type == 'mae':
+        loss_fn = tf.keras.losses.MeanAbsoluteError()
+    elif config.loss.forecast_loss_type == 'huber':
+        loss_fn = tf.keras.losses.Huber(delta=config.loss.huber_delta)
+    else:
+        loss_fn = tf.keras.losses.MeanSquaredError()
+
     # Create trainer
-    trainer = MTLTrainer(model, loss_fn, config.optimizer, config.training)
+    trainer = CNNLSTMTrainer(model, loss_fn, config.optimizer, config.training)
 
     # Setup callbacks
     model_dir = Path(config.data.model_dir)
@@ -456,7 +479,7 @@ def main(args):
     history = trainer.fit(train_dataset, val_dataset, callbacks=callbacks)
 
     # Save final model
-    final_model_path = model_dir / 'mtl_transformer_final.h5'
+    final_model_path = model_dir / 'cnn_lstm_final.h5'
     model.save_weights(str(final_model_path))
     print(f"\n💾 Final model saved to {final_model_path}")
 
@@ -473,7 +496,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train MTL Transformer for energy forecasting')
+    parser = argparse.ArgumentParser(description='Train CNN-LSTM for energy forecasting')
 
     parser.add_argument('--config', type=str, default=None,
                         help='Path to config JSON file')
@@ -487,6 +510,10 @@ if __name__ == "__main__":
                         help='Batch size')
     parser.add_argument('--use_full_dataset', action='store_true',
                         help='Use all buildings (requires 6GB+ RAM)')
+    parser.add_argument('--n_buildings', type=int, default=None,
+                        help='Number of buildings to use (e.g., 10 for first 10 buildings). Overrides use_full_dataset.')
+    parser.add_argument('--building_split', type=str, default=None,
+                        help='Path to building_split.json (from data quality analysis)')
 
     args = parser.parse_args()
     main(args)

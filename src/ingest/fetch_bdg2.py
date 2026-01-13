@@ -5,6 +5,8 @@ import pathlib
 import requests
 from tqdm import tqdm
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 
 def download_raw_data(output_path: str = "data/raw_electricity.csv"):
@@ -58,13 +60,6 @@ def download_raw_data(output_path: str = "data/raw_electricity.csv"):
 def convert_to_parquet(csv_path: pathlib.Path, parquet_path: pathlib.Path):
     """
     Convert wide format CSV to long format Parquet.
-
-    Wide format: columns = ['timestamp', 'building_1', 'building_2', ...]
-    Long format: columns = ['timestamp_local', 'building_id', 'meter', 'value']
-
-    Args:
-        csv_path: Path to wide format CSV
-        parquet_path: Path to save long format parquet
     """
     print(f"\n📊 Converting to long format parquet...")
     print(f"   Reading: {csv_path}")
@@ -91,23 +86,84 @@ def convert_to_parquet(csv_path: pathlib.Path, parquet_path: pathlib.Path):
     # Clean types
     df_long["timestamp_local"] = pd.to_datetime(df_long["timestamp_local"], errors="coerce")
     df_long = df_long.dropna(subset=["timestamp_local"])
+
+    # Convertir a tipos correctos - usar str para forzar string nativo
     df_long["building_id"] = df_long["building_id"].astype(str)
+    df_long["meter"] = df_long["meter"].astype(str)
+    df_long["value"] = df_long["value"].astype("float32")
 
     # Sort
     df_long = df_long.sort_values(["building_id", "timestamp_local"]).reset_index(drop=True)
 
-    # Save parquet
-    parquet_path.parent.mkdir(parents=True, exist_ok=True)
-    df_long.to_parquet(parquet_path, index=False)
+    # Verificar tipos antes de guardar
+    print(f"\n📋 Tipos antes de guardar:")
+    for col in df_long.columns:
+        dtype_str = str(df_long[col].dtype)
+        if dtype_str == 'object':
+            print(f"   {col}: {dtype_str} (será convertido a Arrow string)")
+        else:
+            print(f"   {col}: {dtype_str}")
 
-    print(f"✅ Conversion complete!")
+    # Save parquet con schema explícito de PyArrow
+    parquet_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n💾 Guardando parquet con schema Arrow explícito...")
+
+    # Definir schema explícito de PyArrow para garantizar tipos correctos
+    schema = pa.schema([
+        ('timestamp_local', pa.timestamp('ns')),
+        ('building_id', pa.string()),  # Arrow string nativo (no large_string)
+        ('meter', pa.string()),         # Arrow string nativo
+        ('value', pa.float32())
+    ])
+
+    # Convertir DataFrame a Arrow Table con schema explícito
+    table = pa.Table.from_pandas(df_long, schema=schema, preserve_index=False)
+
+    # Guardar con PyArrow directamente
+    pq.write_table(table, parquet_path, compression='snappy')
+
+    # Verificar los tipos del parquet guardado
+    print(f"\n📋 Verificando tipos del parquet guardado...")
+    df_check = pd.read_parquet(parquet_path)
+    print(f"   Tipos después de leer el parquet:")
+    for col in df_check.columns:
+        dtype_str = str(df_check[col].dtype)
+        if dtype_str == 'string':
+            print(f"     {col}: {dtype_str} ✅")
+        elif 'object' in dtype_str:
+            print(f"     {col}: {dtype_str} ⚠️")
+        else:
+            print(f"     {col}: {dtype_str}")
+    
+    # Verificación adicional con pyarrow
+    try:
+        table_verify = pq.read_table(parquet_path)
+        print(f"\n📋 Schema de Arrow del archivo parquet:")
+        print(f"   {table_verify.schema}")
+        
+        # Análisis detallado
+        print(f"\n🔍 Análisis detallado de tipos Arrow:")
+        for field in table_verify.schema:
+            field_type = str(field.type)
+            if field_type == 'string':
+                print(f"   {field.name}: {field.type} ✅ (Arrow string)")
+            elif 'string' in field_type.lower():
+                print(f"   {field.name}: {field.type} ✅ (string)")
+            else:
+                print(f"   {field.name}: {field.type}")
+    except ImportError:
+        print("\n⚠️  PyArrow no disponible para verificación detallada del schema")
+    except Exception as e:
+        print(f"\n⚠️  Error al verificar schema Arrow: {e}")
+
+    print(f"\n✅ Conversion complete!")
     print(f"   Parquet saved to: {parquet_path.absolute()}")
     print(f"   Records: {len(df_long):,}")
     print(f"   Buildings: {df_long['building_id'].nunique()}")
     print(f"   Date range: {df_long['timestamp_local'].min()} to {df_long['timestamp_local'].max()}")
 
     return df_long
-
 
 def main():
     parser = argparse.ArgumentParser(

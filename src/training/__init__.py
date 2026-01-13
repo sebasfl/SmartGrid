@@ -1,11 +1,12 @@
 # src/training/__init__.py
-from .trainer import MTLTrainer
-from .callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoardLogger
+from .trainer import CNNLSTMTrainer
+from .callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TensorBoardLogger, TimerCallback
 
 __all__ = [
-    'MTLTrainer',
+    'CNNLSTMTrainer',
     'EarlyStopping',
     'ModelCheckpoint',
     'ReduceLROnPlateau',
-    'TensorBoardLogger'
+    'TensorBoardLogger',
+    'TimerCallback'
 ]
