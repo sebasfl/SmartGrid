@@ -1,14 +1,5 @@
 # src/main.py
 # Main training script for Hybrid CNN-LSTM model
-import os
-
-# ============================================================================
-# CRITICAL: Disable cuDNN for RNNs (cuDNN 9.0+ compatibility)
-# MUST BE SET BEFORE IMPORTING TENSORFLOW
-# ============================================================================
-os.environ['TF_CUDNN_USE_AUTOTUNE'] = '0'
-os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-
 import argparse
 import tensorflow as tf
 import pandas as pd

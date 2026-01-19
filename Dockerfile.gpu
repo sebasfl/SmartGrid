@@ -1,8 +1,14 @@
-# Use official NVIDIA TensorFlow GPU image (pre-configured with CUDA + cuDNN + TensorFlow)
-# This image includes TensorFlow 2.16+ with full GPU support out-of-the-box
-FROM nvcr.io/nvidia/tensorflow:24.08-tf2-py3
+# Use TensorFlow 2.15 with cuDNN 8.9 (stable, fast, no cuDNN 9.0+ issues)
+# This version provides optimal LSTM performance without compatibility problems
+FROM tensorflow/tensorflow:2.15.0-gpu
 
-RUN pip install "numba<0.61"
+# Update system packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install compatible numba version
+RUN pip install --no-cache-dir "numba<0.61"
 
 
 # Copy requirements and install additional Python dependencies

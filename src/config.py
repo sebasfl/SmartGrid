@@ -57,7 +57,7 @@ class LSTMConfig:
 
     # Regularization
     dropout: float = 0.2
-    recurrent_dropout: float = 0.1
+    recurrent_dropout: float = 0.0  # 0.0 enables cuDNN acceleration (3-5x faster)
 
     # Architecture
     use_bidirectional: bool = True
