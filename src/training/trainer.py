@@ -120,13 +120,13 @@ class CNNLSTMTrainer:
                 batches_per_sec = num_batches / (time.time() - start_time)
                 logger.debug("Batch %d: Loss=%.4f (%.1f batch/s)", batch_idx + 1, avg_loss, batches_per_sec)
 
-        return {"loss": np.mean(epoch_losses), "time": time.time() - start_time}
+        return {"loss": float(np.mean(epoch_losses)), "time": time.time() - start_time}
 
     def validate(self, val_dataset: tf.data.Dataset) -> dict[str, float]:
         val_losses: list[float] = []
         for x, y_forecast in val_dataset:
             val_losses.append(float(self.val_step(x, y_forecast)))
-        return {"loss": np.mean(val_losses)}
+        return {"loss": float(np.mean(val_losses))}
 
     def fit(
         self,

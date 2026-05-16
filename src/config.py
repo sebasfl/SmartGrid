@@ -172,7 +172,7 @@ class Config:
         kwargs: dict = {}
         for section, section_cls in _SECTION_CLS.items():
             section_data = config_dict.get(section, {})
-            valid_fields = {f.name for f in section_cls.__dataclass_fields__.values()}
+            valid_fields = {f.name for f in section_cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
             unknown_keys = set(section_data.keys()) - valid_fields
             if unknown_keys:
                 raise ConfigurationError(

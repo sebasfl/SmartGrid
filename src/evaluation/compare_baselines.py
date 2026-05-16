@@ -46,7 +46,7 @@ def linear_regression_forecast(X_train: np.ndarray, y_train: np.ndarray, X_test:
 
     model = LinearRegression()
     model.fit(X_train_flat, y_train)
-    return model.predict(X_test_flat)
+    return model.predict(X_test_flat)  # type: ignore[no-any-return]
 
 
 def compare_baselines(

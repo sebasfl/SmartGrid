@@ -361,7 +361,7 @@ def select_high_quality_buildings(
     if len(selected) == 0:
         logger.warning("No buildings met criteria. Consider relaxing thresholds.")
 
-    return selected
+    return selected  # type: ignore[no-any-return]
 
 
 def split_buildings_for_training(
@@ -413,7 +413,7 @@ def load_building_split(input_path: str) -> dict[str, list[str]]:
         len(split.get("validation", [])),
         len(split.get("test", [])),
     )
-    return split
+    return split  # type: ignore[no-any-return]
 
 
 if __name__ == "__main__":

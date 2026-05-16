@@ -105,7 +105,7 @@ def predict_building(
         stride=config.data.stride,
     )
 
-    if X is None or len(X) == 0:
+    if X is None or y_true is None or len(X) == 0:
         return None
 
     original_shape = X.shape
