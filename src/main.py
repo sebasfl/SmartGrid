@@ -58,7 +58,7 @@ def _clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             f"Run preprocessing and data quality analysis first."
         )
 
-    return df_clean  # type: ignore[return-value]
+    return df_clean  # type: ignore[no-any-return]
 
 
 def main(args: argparse.Namespace) -> None:

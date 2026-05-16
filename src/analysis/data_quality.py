@@ -272,7 +272,7 @@ def evaluate_all_buildings_gpu(gdf: cudf.DataFrame, granularity_hours: int = 1) 
         "coefficient_of_variation",
         "quality_score",
     ]
-    return result_df[final_cols].sort_values("quality_score", ascending=False)  # type: ignore[return-value]
+    return result_df[final_cols].sort_values("quality_score", ascending=False)  # type: ignore[no-any-return]
 
 
 def evaluate_all_buildings(
