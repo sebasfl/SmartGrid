@@ -4,11 +4,11 @@ import pytest
 
 tf = pytest.importorskip("tensorflow")
 
-from src.config import Config
-from src.data.sequences import create_sequences
-from src.models.cnn_lstm import build_cnn_lstm_model
-from src.training.trainer import CNNLSTMTrainer
-from src.evaluation.metrics import ForecastMetrics
+from src.config import Config  # noqa: E402
+from src.data.sequences import create_sequences  # noqa: E402
+from src.evaluation.metrics import ForecastMetrics  # noqa: E402
+from src.models.cnn_lstm import build_cnn_lstm_model  # noqa: E402
+from src.training.trainer import CNNLSTMTrainer  # noqa: E402
 
 EXPECTED_METRIC_KEYS = {'rmse', 'mae', 'mape', 'smape', 'r2', 'nrmse'}
 

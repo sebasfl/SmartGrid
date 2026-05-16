@@ -5,7 +5,7 @@ from typing import Any
 
 def __getattr__(name: str) -> Any:
     if name in ('configure_gpu', 'check_gpu_availability'):
-        from .gpu import check_gpu_availability, configure_gpu
+        from .gpu import check_gpu_availability, configure_gpu  # noqa: F401
         return locals()[name]
     if name == 'set_random_seed':
         from .reproducibility import set_random_seed

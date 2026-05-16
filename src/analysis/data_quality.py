@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -43,7 +42,7 @@ def calculate_building_quality_metrics(
     df: pd.DataFrame,
     building_id: str,
     granularity_hours: int = 1,
-) -> Optional[dict]:
+) -> dict | None:
     """Calculate data quality metrics for a single building (CPU path)."""
     building_df = df[df['building_id'] == building_id].copy()
 
@@ -257,7 +256,7 @@ def evaluate_all_buildings_gpu(gdf: cudf.DataFrame, granularity_hours: int = 1) 
 
 def evaluate_all_buildings(
     df: pd.DataFrame,
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
     use_gpu: bool = True,
     granularity_hours: int = 1,
 ) -> pd.DataFrame:
@@ -265,7 +264,7 @@ def evaluate_all_buildings(
     building_ids = df['building_id'].unique()
     logger.info("Evaluating quality for %d buildings (granularity: %dh)...", len(building_ids), granularity_hours)
 
-    quality_df: Optional[pd.DataFrame] = None
+    quality_df: pd.DataFrame | None = None
 
     if use_gpu and GPU_AVAILABLE and cudf is not None:
         try:
@@ -338,7 +337,7 @@ def split_buildings_for_training(
     val_ratio: float = 0.2,
     test_ratio: float = 0.2,
     random_seed: int = 42,
-    top_n: Optional[int] = None,
+    top_n: int | None = None,
 ) -> dict[str, list[str]]:
     """Split buildings into train/validation/test sets."""
     if not np.isclose(train_ratio + val_ratio + test_ratio, 1.0):
@@ -374,7 +373,7 @@ def save_building_split(split: dict[str, list[str]], output_path: str) -> None:
 
 
 def load_building_split(input_path: str) -> dict[str, list[str]]:
-    with open(input_path, 'r') as f:
+    with open(input_path) as f:
         split = json.load(f)
     logger.info("Loaded split: %d train / %d val / %d test",
                 len(split.get('train', [])), len(split.get('validation', [])), len(split.get('test', [])))

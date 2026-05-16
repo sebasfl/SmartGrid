@@ -1,12 +1,10 @@
-import numpy as np
 import pytest
 
 tf = pytest.importorskip("tensorflow")
 
-from src.models.cnn_lstm import (
+from src.models.cnn_lstm import (  # noqa: E402
     CNNFeatureExtractor,
     ForecastingHead,
-    HybridCNNLSTM,
     LSTMTemporalEncoder,
     build_cnn_lstm_model,
 )
@@ -40,7 +38,7 @@ class TestBuildModel:
         assert not tf.reduce_any(tf.math.is_nan(output))
 
     def test_accepts_dataclass_config(self):
-        from src.config import CNNConfig, LSTMConfig, ForecastHeadConfig
+        from src.config import CNNConfig, ForecastHeadConfig, LSTMConfig
         model = build_cnn_lstm_model(
             input_shape=(24, 8),
             forecast_horizon=12,

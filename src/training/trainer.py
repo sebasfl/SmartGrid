@@ -85,7 +85,7 @@ class CNNLSTMTrainer:
             gradients = self.optimizer.get_unscaled_gradients(gradients)
 
         gradients, _ = tf.clip_by_global_norm(gradients, self.optimizer_config.gradient_clip_norm)
-        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables, strict=False))
 
         return loss
 
@@ -164,7 +164,6 @@ class CNNLSTMTrainer:
                     lr = float(self.optimizer.learning_rate)
                 self.history['learning_rate'].append(lr)
 
-                epoch_time = time.time()
                 logger.info("  Train Loss: %.4f%s | LR: %.6f",
                             train_metrics['loss'],
                             f" | Val Loss: {val_metrics['loss']:.4f}" if val_metrics else "",
@@ -202,6 +201,6 @@ class CNNLSTMTrainer:
         logger.info("Training history saved to %s", filepath)
 
     def load_history(self, filepath: str) -> None:
-        with open(filepath, 'r') as f:
+        with open(filepath) as f:
             self.history = json.load(f)
         logger.info("Training history loaded from %s", filepath)

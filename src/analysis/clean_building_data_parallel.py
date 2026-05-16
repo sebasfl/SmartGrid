@@ -4,9 +4,8 @@ import argparse
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -17,7 +16,7 @@ os.environ['NUMBA_CUDA_ENABLE_PYNVJITLINK'] = '1'
 
 try:
     import cudf
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     GPU_AVAILABLE = True
     logger.info("GPU acceleration: cuDF + CuPy available")
 except (ImportError, ModuleNotFoundError):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
 
 import numpy as np
 import tensorflow as tf
@@ -178,7 +178,7 @@ class TensorBoardLogger(Callback):
     def __init__(self, log_dir: str, verbose: bool = True) -> None:
         self.log_dir = log_dir
         self.verbose = verbose
-        self.writer: Optional[tf.summary.SummaryWriter] = None
+        self.writer: tf.summary.SummaryWriter | None = None
 
     def on_train_begin(self) -> None:
         Path(self.log_dir).mkdir(parents=True, exist_ok=True)
@@ -227,7 +227,7 @@ class TimerCallback(Callback):
 
     def __init__(self, verbose: bool = True) -> None:
         self.verbose = verbose
-        self.start_time: Optional[float] = None
+        self.start_time: float | None = None
         self.total_time: float = 0
 
     def on_train_begin(self) -> None:

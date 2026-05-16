@@ -153,7 +153,7 @@ class Config:
     @classmethod
     def from_json(cls, json_path: str) -> Config:
         """Load configuration from JSON file, validating all keys."""
-        with open(json_path, 'r') as f:
+        with open(json_path) as f:
             config_dict: dict[str, dict] = json.load(f)
 
         unknown_sections = set(config_dict.keys()) - _KNOWN_SECTIONS

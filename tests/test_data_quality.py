@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.analysis.data_quality import (
     calculate_building_quality_metrics,

@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from src.data.sequences import create_sequences
 

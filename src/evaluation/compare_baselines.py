@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 import numpy as np
-from dataclasses import dataclass
 from sklearn.linear_model import LinearRegression
 
 from .metrics import ForecastMetrics
