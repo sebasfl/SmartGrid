@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main, cuDNN-TF]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Lint
+        run: ruff check src/ tests/
+      - name: Format check
+        run: ruff format --check src/ tests/
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]" || pip install mypy pandas-stubs
+      - name: Type check
+        run: mypy src/ --ignore-missing-imports
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]" 2>/dev/null || pip install pytest pytest-cov tensorflow==2.15.* pandas==2.2.2 numpy==1.26.4 pyarrow==16.1.0 scikit-learn==1.4.2 scipy==1.12.0 joblib
+      - name: Run tests
+        run: pytest tests/ -v -m "not gpu" --tb=short

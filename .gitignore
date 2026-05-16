@@ -1,4 +1,4 @@
-data/
+/data/
 CLAUDE.md
 .env
 
@@ -8,4 +8,12 @@ __pycache__/
 *.so
 
 logs/
-models/
+/models/
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.egg-info/
