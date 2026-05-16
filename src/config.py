@@ -1,34 +1,42 @@
-# src/config.py
-# Centralized configuration for Hybrid CNN-LSTM model
-from dataclasses import dataclass, field
-from typing import List
+from __future__ import annotations
+
 import json
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from .exceptions import ConfigurationError
 
 
 @dataclass
 class DataConfig:
     """Data processing configuration."""
-    # Paths
-    data_root: str = "/app/data"
-    parquet_path: str = "/app/data/processed/bdg2_electricity_cleaned.parquet"
-    model_dir: str = "/app/models"
 
-    # Sequence generation
-    # Note: With 3-hour granularity, divide original hourly values by 3
-    # Use 2x lookback data relative to forecast horizon (2 months to predict 1 month)
-    forecast_horizon: int = 240  # 1 month ahead (30 days * 8 intervals/day with 3h granularity)
-    lookback_window: int = 480  # 2 months lookback (60 days * 8 intervals/day with 3h granularity)
-    stride: int = 8  # Sliding window stride (1 day with 3h intervals = 8 intervals)
+    # os.environ.get() always returns str here due to fallback defaults
+    data_root: str = field(default_factory=lambda: os.environ.get("SMARTGRID_DATA_ROOT", "/app/data"))
+    parquet_path: str = field(
+        default_factory=lambda: os.environ.get("SMARTGRID_PARQUET_PATH", "/app/data/processed/bdg2_electricity_cleaned.parquet")
+    )
+    model_dir: str = field(default_factory=lambda: os.environ.get("SMARTGRID_MODEL_DIR", "/app/models"))
 
-    # Features
-    time_features: List[str] = field(default_factory=lambda: [
+    # With 3h granularity: 60 days = 480 intervals, 30 days = 240 intervals
+    forecast_horizon: int = 240
+    lookback_window: int = 480
+    stride: int = 8
+
+    time_features: list[str] = field(default_factory=lambda: [
         'hour', 'day_of_week', 'month', 'is_weekend',
         'is_working_hours', 'quarter', 'day_of_year'
     ])
     value_col: str = 'value'
 
-    # Splits
+    scaler_sample_buildings: int = 10
+
+    @property
+    def input_dim(self) -> int:
+        """Number of input features: time features + value column."""
+        return len(self.time_features) + 1
+
     train_ratio: float = 0.7
     val_ratio: float = 0.15
     test_ratio: float = 0.15
@@ -37,105 +45,103 @@ class DataConfig:
 @dataclass
 class CNNConfig:
     """CNN feature extractor configuration."""
-    # Convolutional layers
-    filters: List[int] = field(default_factory=lambda: [64, 128, 128])
-    kernel_sizes: List[int] = field(default_factory=lambda: [3, 3, 3])
 
-    # Regularization
+    filters: list[int] = field(default_factory=lambda: [64, 128, 128])
+    kernel_sizes: list[int] = field(default_factory=lambda: [3, 3, 3])
     dropout: float = 0.2
     use_batch_norm: bool = True
-
-    # Activation
-    activation: str = 'relu'  # 'relu', 'gelu', 'swish'
+    activation: str = 'relu'
 
 
 @dataclass
 class LSTMConfig:
     """LSTM temporal encoder configuration."""
-    # LSTM layers
-    units: List[int] = field(default_factory=lambda: [128, 64])
 
-    # Regularization
+    units: list[int] = field(default_factory=lambda: [128, 64])
     dropout: float = 0.2
-    recurrent_dropout: float = 0.0  # 0.0 enables cuDNN acceleration (3-5x faster)
-
-    # Architecture
+    recurrent_dropout: float = 0.0
     use_bidirectional: bool = True
 
 
 @dataclass
 class ForecastHeadConfig:
     """Forecasting head configuration."""
-    # Dense layers
-    hidden_dims: List[int] = field(default_factory=lambda: [128, 64])
 
-    # Regularization
+    hidden_dims: list[int] = field(default_factory=lambda: [128, 64])
     dropout: float = 0.2
-
-    # Activation
     activation: str = 'relu'
 
 
 @dataclass
 class LossConfig:
     """Loss function configuration."""
-    # Forecast loss
-    forecast_loss_type: str = 'mse'  # 'mse', 'mae', 'huber'
+
+    forecast_loss_type: str = 'mse'
     huber_delta: float = 1.0
 
 
 @dataclass
 class OptimizerConfig:
     """Optimizer configuration."""
-    optimizer_type: str = 'adam'  # 'adam', 'adamw', 'sgd'
+
+    optimizer_type: str = 'adam'
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
     beta1: float = 0.9
     beta2: float = 0.999
     epsilon: float = 1e-7
 
-    # Learning rate schedule
     use_lr_schedule: bool = True
-    lr_schedule_type: str = 'cosine'  # 'cosine', 'step', 'exponential'
+    lr_schedule_type: str = 'cosine'
     warmup_steps: int = 1000
     min_lr: float = 1e-7
 
-    # Gradient clipping
     gradient_clip_norm: float = 1.0
 
 
 @dataclass
 class TrainingConfig:
     """Training loop configuration."""
-    # Basic training
-    batch_size: int = 8  # Reduced due to longer sequences
-    epochs: int = 50
-    validation_freq: int = 1  # Validate every N epochs
 
-    # GPU settings
-    use_mixed_precision: bool = True  # FP16 training
+    batch_size: int = 8
+    epochs: int = 50
+    validation_freq: int = 1
+
+    use_mixed_precision: bool = True
     gpu_id: int = 0
 
-    # Checkpointing
-    save_checkpoint_freq: int = 5  # Save every N epochs
+    save_checkpoint_freq: int = 5
     keep_last_n_checkpoints: int = 3
 
-    # Early stopping
     early_stopping_patience: int = 10
     early_stopping_min_delta: float = 1e-4
-    early_stopping_monitor: str = 'val_loss'  # 'val_loss', 'val_mae', etc.
+    early_stopping_monitor: str = 'val_loss'
 
-    # Logging
-    log_freq: int = 100  # Log every N batches
+    log_freq: int = 100
     tensorboard_dir: str = "/app/logs"
 
-    # Random seed
     random_seed: int = 42
+
+
+_KNOWN_SECTIONS = frozenset({
+    'data', 'cnn', 'lstm', 'forecast_head', 'loss', 'optimizer', 'training'
+})
+
+_SECTION_CLS = {
+    'data': DataConfig,
+    'cnn': CNNConfig,
+    'lstm': LSTMConfig,
+    'forecast_head': ForecastHeadConfig,
+    'loss': LossConfig,
+    'optimizer': OptimizerConfig,
+    'training': TrainingConfig,
+}
 
 
 @dataclass
 class Config:
     """Master configuration combining all sub-configs."""
+
     data: DataConfig = field(default_factory=DataConfig)
     cnn: CNNConfig = field(default_factory=CNNConfig)
     lstm: LSTMConfig = field(default_factory=LSTMConfig)
@@ -145,50 +151,68 @@ class Config:
     training: TrainingConfig = field(default_factory=TrainingConfig)
 
     @classmethod
-    def from_json(cls, json_path: str):
-        """Load configuration from JSON file."""
+    def from_json(cls, json_path: str) -> Config:
+        """Load configuration from JSON file, validating all keys."""
         with open(json_path, 'r') as f:
-            config_dict = json.load(f)
+            config_dict: dict[str, dict] = json.load(f)
 
-        return cls(
-            data=DataConfig(**config_dict.get('data', {})),
-            cnn=CNNConfig(**config_dict.get('cnn', {})),
-            lstm=LSTMConfig(**config_dict.get('lstm', {})),
-            forecast_head=ForecastHeadConfig(**config_dict.get('forecast_head', {})),
-            loss=LossConfig(**config_dict.get('loss', {})),
-            optimizer=OptimizerConfig(**config_dict.get('optimizer', {})),
-            training=TrainingConfig(**config_dict.get('training', {}))
-        )
+        unknown_sections = set(config_dict.keys()) - _KNOWN_SECTIONS
+        if unknown_sections:
+            raise ConfigurationError(
+                f"Unknown config sections: {unknown_sections}. "
+                f"Valid sections: {sorted(_KNOWN_SECTIONS)}"
+            )
 
-    def to_json(self, json_path: str):
+        kwargs: dict = {}
+        for section, section_cls in _SECTION_CLS.items():
+            section_data = config_dict.get(section, {})
+            valid_fields = {f.name for f in section_cls.__dataclass_fields__.values()}
+            unknown_keys = set(section_data.keys()) - valid_fields
+            if unknown_keys:
+                raise ConfigurationError(
+                    f"Unknown keys in '{section}': {unknown_keys}. "
+                    f"Valid keys: {sorted(valid_fields)}"
+                )
+            kwargs[section] = section_cls(**section_data)
+
+        return cls(**kwargs)
+
+    def to_json(self, json_path: str) -> None:
         """Save configuration to JSON file."""
-        config_dict = {
-            'data': self.data.__dict__,
-            'cnn': self.cnn.__dict__,
-            'lstm': self.lstm.__dict__,
-            'forecast_head': self.forecast_head.__dict__,
-            'loss': self.loss.__dict__,
-            'optimizer': self.optimizer.__dict__,
-            'training': self.training.__dict__
-        }
+        config_dict = {name: getattr(self, name).__dict__ for name in _SECTION_CLS}
 
         Path(json_path).parent.mkdir(parents=True, exist_ok=True)
         with open(json_path, 'w') as f:
             json.dump(config_dict, f, indent=2)
 
-    def __str__(self):
-        """Pretty print configuration."""
+    def validate(self) -> None:
+        """Validate configuration consistency. Raises ConfigurationError on failure."""
+        if len(self.cnn.filters) != len(self.cnn.kernel_sizes):
+            raise ConfigurationError(
+                f"CNN filters ({len(self.cnn.filters)}) and kernel_sizes "
+                f"({len(self.cnn.kernel_sizes)}) must have same length"
+            )
+        if self.data.lookback_window <= 0:
+            raise ConfigurationError("lookback_window must be positive")
+        if self.data.forecast_horizon <= 0:
+            raise ConfigurationError("forecast_horizon must be positive")
+        ratios = self.data.train_ratio + self.data.val_ratio + self.data.test_ratio
+        if abs(ratios - 1.0) > 0.01:
+            raise ConfigurationError(f"Data split ratios must sum to 1.0, got {ratios:.3f}")
+        if self.training.batch_size <= 0:
+            raise ConfigurationError("batch_size must be positive")
+        if self.optimizer.learning_rate <= 0:
+            raise ConfigurationError("learning_rate must be positive")
+
+    def __str__(self) -> str:
         lines = ["=" * 60, "CONFIGURATION", "=" * 60, ""]
 
-        for section_name, section in [
-            ("DATA", self.data),
-            ("CNN", self.cnn),
-            ("LSTM", self.lstm),
-            ("FORECAST HEAD", self.forecast_head),
-            ("LOSS", self.loss),
-            ("OPTIMIZER", self.optimizer),
-            ("TRAINING", self.training)
+        for section_name, attr_name in [
+            ("DATA", "data"), ("CNN", "cnn"), ("LSTM", "lstm"),
+            ("FORECAST HEAD", "forecast_head"), ("LOSS", "loss"),
+            ("OPTIMIZER", "optimizer"), ("TRAINING", "training"),
         ]:
+            section = getattr(self, attr_name)
             lines.append(f"{section_name}:")
             for key, value in section.__dict__.items():
                 lines.append(f"  {key}: {value}")
@@ -198,23 +222,4 @@ class Config:
         return "\n".join(lines)
 
 
-# Default configuration instance
 default_config = Config()
-
-
-if __name__ == "__main__":
-    # Example: Save and load config
-    config = Config()
-
-    # Customize if needed
-    config.cnn.filters = [128, 256, 256]
-    config.training.batch_size = 16
-
-    # Save to JSON
-    config.to_json("config_example.json")
-    print("Config saved to config_example.json")
-
-    # Load from JSON
-    loaded_config = Config.from_json("config_example.json")
-    print("\nLoaded configuration:")
-    print(loaded_config)

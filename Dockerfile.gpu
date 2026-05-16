@@ -11,9 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir "numba<0.61"
 
 
-# Copy requirements and install additional Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies from pyproject.toml
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
 
 # Install RAPIDS for GPU-accelerated preprocessing (optional)
 RUN pip install --no-cache-dir \

@@ -1,5 +1,5 @@
 services:
-  # GPU-enabled trainer for MTL Transformer
+  # GPU-enabled trainer for CNN-LSTM
   trainer-gpu:
     runtime: nvidia
     gpus: all

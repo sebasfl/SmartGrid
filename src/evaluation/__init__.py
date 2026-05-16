@@ -1,4 +1,3 @@
-# src/evaluation/__init__.py
-from .metrics import ForecastMetrics
+from .metrics import BuildingEvaluator, ForecastMetrics
 
-__all__ = ['ForecastMetrics']
+__all__ = ['BuildingEvaluator', 'ForecastMetrics']
