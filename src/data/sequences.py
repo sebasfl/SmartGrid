@@ -32,8 +32,8 @@ def create_sequences(
     if feature_cols is None:
         feature_cols = DEFAULT_FEATURE_COLS
 
-    building_df = df[df['building_id'] == building_id].copy()
-    building_df = building_df.sort_values('timestamp_local')
+    building_df = df[df["building_id"] == building_id].copy()
+    building_df = building_df.sort_values("timestamp_local")
 
     if len(building_df) < lookback + horizon:
         return None, None
@@ -44,8 +44,8 @@ def create_sequences(
     y_forecast: list[np.ndarray] = []
 
     for i in range(0, len(features) - lookback - horizon + 1, stride):
-        X_sequences.append(features[i:i + lookback])
-        y_forecast.append(features[i + lookback:i + lookback + horizon, -1])
+        X_sequences.append(features[i : i + lookback])
+        y_forecast.append(features[i + lookback : i + lookback + horizon, -1])
 
     if len(X_sequences) == 0:
         return None, None

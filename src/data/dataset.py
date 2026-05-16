@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def prepare_dataset(
     df: pd.DataFrame,
     config: Config,
-    split: str = 'train',
+    split: str = "train",
     scaler: StandardScaler | None = None,
     max_buildings: int | None = None,
     building_ids: list[str] | None = None,
@@ -49,16 +49,16 @@ def prepare_dataset(
         split_buildings = np.array(building_ids)
         logger.info("  Using provided building list: %d buildings", len(split_buildings))
     else:
-        all_building_ids = df['building_id'].unique()
+        all_building_ids = df["building_id"].unique()
         n_buildings = len(all_building_ids)
         np.random.shuffle(all_building_ids)
 
         train_end = int(n_buildings * config.data.train_ratio)
         val_end = int(n_buildings * (config.data.train_ratio + config.data.val_ratio))
 
-        if split == 'train':
+        if split == "train":
             split_buildings = all_building_ids[:train_end]
-        elif split == 'val':
+        elif split == "val":
             split_buildings = all_building_ids[train_end:val_end]
         else:
             split_buildings = all_building_ids[val_end:]
@@ -75,27 +75,29 @@ def prepare_dataset(
 
     logger.info("  %s buildings: %d", split.capitalize(), len(split_buildings))
 
-    if split == 'train':
-        n_sample = getattr(config.data, 'scaler_sample_buildings', 10)
+    if split == "train":
+        n_sample = getattr(config.data, "scaler_sample_buildings", 10)
         logger.info("  Fitting scaler on sample (%d buildings)...", n_sample)
-        sample_buildings = split_buildings[:min(n_sample, len(split_buildings))]
+        sample_buildings = split_buildings[: min(n_sample, len(split_buildings))]
         scaler = StandardScaler()
 
         for _i, building_id in enumerate(sample_buildings):
             X, _ = create_sequences(
-                df, building_id,
+                df,
+                building_id,
                 lookback=config.data.lookback_window,
                 horizon=config.data.forecast_horizon,
                 stride=config.data.stride * 10,
             )
             if X is not None and len(X) > 0:
-                X_sample = X[:min(100, len(X))]
+                X_sample = X[: min(100, len(X))]
                 scaler.partial_fit(X_sample.reshape(-1, X_sample.shape[-1]))
 
         import sklearn
-        scaler_path = Path(config.data.model_dir) / 'scaler.pkl'
+
+        scaler_path = Path(config.data.model_dir) / "scaler.pkl"
         scaler_path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({'scaler': scaler, 'sklearn_version': sklearn.__version__}, scaler_path)
+        joblib.dump({"scaler": scaler, "sklearn_version": sklearn.__version__}, scaler_path)
         logger.info("  Saved scaler to %s (sklearn %s)", scaler_path, sklearn.__version__)
 
     def data_generator() -> tf.data.Dataset:
@@ -104,7 +106,8 @@ def prepare_dataset(
 
         for i, building_id in enumerate(split_buildings):
             X, y_f = create_sequences(
-                df, building_id,
+                df,
+                building_id,
                 lookback=config.data.lookback_window,
                 horizon=config.data.forecast_horizon,
                 stride=config.data.stride,
@@ -146,7 +149,8 @@ def prepare_dataset(
             invalid_pct = 100 * skipped_invalid / (total_sequences + skipped_invalid)
             logger.warning(
                 "  Skipped %d invalid sequences (%.1f%%) containing NaN/Inf",
-                skipped_invalid, invalid_pct,
+                skipped_invalid,
+                invalid_pct,
             )
             if invalid_pct > 50:
                 raise DataQualityError(
@@ -161,7 +165,7 @@ def prepare_dataset(
 
     dataset = tf.data.Dataset.from_generator(data_generator, output_signature=output_signature)
 
-    if split == 'train':
+    if split == "train":
         dataset = dataset.shuffle(buffer_size=2000)
 
     dataset = dataset.batch(config.training.batch_size).prefetch(2)

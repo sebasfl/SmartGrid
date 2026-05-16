@@ -1,4 +1,5 @@
 """Shared data loading utilities for training and inference."""
+
 from __future__ import annotations
 
 import json

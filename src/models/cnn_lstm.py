@@ -16,7 +16,7 @@ class CNNFeatureExtractor(layers.Layer):
         self,
         filters: tuple[int, ...] = (64, 128, 128),
         kernel_sizes: tuple[int, ...] = (3, 3, 3),
-        activation: str = 'relu',
+        activation: str = "relu",
         dropout: float = 0.2,
         use_batch_norm: bool = True,
         **kwargs: Any,
@@ -25,8 +25,7 @@ class CNNFeatureExtractor(layers.Layer):
 
         if len(filters) != len(kernel_sizes):
             raise ModelBuildError(
-                f"filters and kernel_sizes must have same length, "
-                f"got {len(filters)} and {len(kernel_sizes)}"
+                f"filters and kernel_sizes must have same length, got {len(filters)} and {len(kernel_sizes)}"
             )
 
         self.filters = filters
@@ -40,26 +39,31 @@ class CNNFeatureExtractor(layers.Layer):
         for i, (n_filters, kernel_size) in enumerate(zip(filters, kernel_sizes, strict=False)):
             block: list[layers.Layer] = []
 
-            block.append(layers.Conv1D(
-                filters=n_filters, kernel_size=kernel_size,
-                padding='same', activation=None, name=f'conv1d_{i}',
-            ))
+            block.append(
+                layers.Conv1D(
+                    filters=n_filters,
+                    kernel_size=kernel_size,
+                    padding="same",
+                    activation=None,
+                    name=f"conv1d_{i}",
+                )
+            )
 
             if use_batch_norm:
-                block.append(layers.BatchNormalization(name=f'batch_norm_{i}'))
+                block.append(layers.BatchNormalization(name=f"batch_norm_{i}"))
 
-            if activation == 'relu':
-                block.append(layers.ReLU(name=f'relu_{i}'))
-            elif activation == 'gelu':
-                block.append(layers.Activation('gelu', name=f'gelu_{i}'))
-            elif activation == 'swish':
-                block.append(layers.Activation(tf.nn.swish, name=f'swish_{i}'))
+            if activation == "relu":
+                block.append(layers.ReLU(name=f"relu_{i}"))
+            elif activation == "gelu":
+                block.append(layers.Activation("gelu", name=f"gelu_{i}"))
+            elif activation == "swish":
+                block.append(layers.Activation(tf.nn.swish, name=f"swish_{i}"))
 
             if i < len(filters) - 1:
-                block.append(layers.MaxPooling1D(pool_size=2, name=f'maxpool_{i}'))
+                block.append(layers.MaxPooling1D(pool_size=2, name=f"maxpool_{i}"))
 
             if dropout > 0:
-                block.append(layers.Dropout(dropout, name=f'dropout_{i}'))
+                block.append(layers.Dropout(dropout, name=f"dropout_{i}"))
 
             self.conv_blocks.append(block)
 
@@ -75,13 +79,15 @@ class CNNFeatureExtractor(layers.Layer):
 
     def get_config(self) -> dict[str, Any]:
         config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'kernel_sizes': self.kernel_sizes,
-            'activation': self.activation,
-            'dropout': self.dropout_rate,
-            'use_batch_norm': self.use_batch_norm,
-        })
+        config.update(
+            {
+                "filters": self.filters,
+                "kernel_sizes": self.kernel_sizes,
+                "activation": self.activation,
+                "dropout": self.dropout_rate,
+                "use_batch_norm": self.use_batch_norm,
+            }
+        )
         return config  # type: ignore[no-any-return]
 
 
@@ -111,13 +117,15 @@ class LSTMTemporalEncoder(layers.Layer):
             return_seq = True if i < len(units) - 1 else return_sequences
 
             lstm = layers.LSTM(
-                units=n_units, return_sequences=return_seq,
-                dropout=dropout, recurrent_dropout=recurrent_dropout,
-                name=f'lstm_{i}',
+                units=n_units,
+                return_sequences=return_seq,
+                dropout=dropout,
+                recurrent_dropout=recurrent_dropout,
+                name=f"lstm_{i}",
             )
 
             if use_bidirectional:
-                lstm = layers.Bidirectional(lstm, name=f'bidirectional_lstm_{i}')
+                lstm = layers.Bidirectional(lstm, name=f"bidirectional_lstm_{i}")
 
             self.lstm_layers.append(lstm)
 
@@ -129,13 +137,15 @@ class LSTMTemporalEncoder(layers.Layer):
 
     def get_config(self) -> dict[str, Any]:
         config = super().get_config()
-        config.update({
-            'units': self.units_list,
-            'dropout': self.dropout_rate,
-            'recurrent_dropout': self.recurrent_dropout_rate,
-            'return_sequences': self.return_sequences,
-            'use_bidirectional': self.use_bidirectional,
-        })
+        config.update(
+            {
+                "units": self.units_list,
+                "dropout": self.dropout_rate,
+                "recurrent_dropout": self.recurrent_dropout_rate,
+                "return_sequences": self.return_sequences,
+                "use_bidirectional": self.use_bidirectional,
+            }
+        )
         return config  # type: ignore[no-any-return]
 
 
@@ -147,7 +157,7 @@ class ForecastingHead(layers.Layer):
         horizon: int,
         hidden_dims: tuple[int, ...] = (128, 64),
         dropout: float = 0.2,
-        activation: str = 'relu',
+        activation: str = "relu",
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -160,11 +170,11 @@ class ForecastingHead(layers.Layer):
         self.dense_layers: list[layers.Layer] = []
 
         for i, dim in enumerate(hidden_dims):
-            self.dense_layers.append(layers.Dense(dim, activation=activation, name=f'forecast_dense_{i}'))
+            self.dense_layers.append(layers.Dense(dim, activation=activation, name=f"forecast_dense_{i}"))
             if dropout > 0:
-                self.dense_layers.append(layers.Dropout(dropout, name=f'forecast_dropout_{i}'))
+                self.dense_layers.append(layers.Dropout(dropout, name=f"forecast_dropout_{i}"))
 
-        self.output_layer = layers.Dense(horizon, activation=None, name='forecast_output')
+        self.output_layer = layers.Dense(horizon, activation=None, name="forecast_output")
 
     def call(self, inputs: tf.Tensor, training: bool | None = None) -> tf.Tensor:
         x = inputs
@@ -177,12 +187,14 @@ class ForecastingHead(layers.Layer):
 
     def get_config(self) -> dict[str, Any]:
         config = super().get_config()
-        config.update({
-            'horizon': self.horizon,
-            'hidden_dims': self.hidden_dims,
-            'dropout': self.dropout_rate,
-            'activation': self.activation,
-        })
+        config.update(
+            {
+                "horizon": self.horizon,
+                "hidden_dims": self.hidden_dims,
+                "dropout": self.dropout_rate,
+                "activation": self.activation,
+            }
+        )
         return config  # type: ignore[no-any-return]
 
 
@@ -204,7 +216,7 @@ class HybridCNNLSTM(Model):
         use_bidirectional: bool = True,
         forecast_hidden_dims: tuple[int, ...] = (128, 64),
         forecast_dropout: float = 0.2,
-        activation: str = 'relu',
+        activation: str = "relu",
         use_batch_norm: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -213,22 +225,29 @@ class HybridCNNLSTM(Model):
         self.forecast_horizon = forecast_horizon
 
         self.cnn_extractor = CNNFeatureExtractor(
-            filters=cnn_filters, kernel_sizes=cnn_kernel_sizes,
-            activation=activation, dropout=cnn_dropout,
-            use_batch_norm=use_batch_norm, name='cnn_feature_extractor',
+            filters=cnn_filters,
+            kernel_sizes=cnn_kernel_sizes,
+            activation=activation,
+            dropout=cnn_dropout,
+            use_batch_norm=use_batch_norm,
+            name="cnn_feature_extractor",
         )
 
         self.lstm_encoder = LSTMTemporalEncoder(
-            units=lstm_units, dropout=lstm_dropout,
+            units=lstm_units,
+            dropout=lstm_dropout,
             recurrent_dropout=lstm_recurrent_dropout,
-            return_sequences=False, use_bidirectional=use_bidirectional,
-            name='lstm_temporal_encoder',
+            return_sequences=False,
+            use_bidirectional=use_bidirectional,
+            name="lstm_temporal_encoder",
         )
 
         self.forecast_head = ForecastingHead(
-            horizon=forecast_horizon, hidden_dims=forecast_hidden_dims,
-            dropout=forecast_dropout, activation=activation,
-            name='forecasting_head',
+            horizon=forecast_horizon,
+            hidden_dims=forecast_hidden_dims,
+            dropout=forecast_dropout,
+            activation=activation,
+            name="forecasting_head",
         )
 
     def call(self, inputs: tf.Tensor, training: bool | None = None) -> tf.Tensor:
@@ -238,7 +257,7 @@ class HybridCNNLSTM(Model):
 
     def get_config(self) -> dict[str, Any]:
         config = super().get_config()
-        config.update({'forecast_horizon': self.forecast_horizon})
+        config.update({"forecast_horizon": self.forecast_horizon})
         return config  # type: ignore[no-any-return]
 
 
