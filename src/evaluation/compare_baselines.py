@@ -24,9 +24,7 @@ def persistence_forecast(X: np.ndarray, horizon: int) -> np.ndarray:
     return np.tile(last_values[:, np.newaxis], (1, horizon))
 
 
-def seasonal_persistence_forecast(
-    X: np.ndarray, horizon: int, season_length: int = 8
-) -> np.ndarray:
+def seasonal_persistence_forecast(X: np.ndarray, horizon: int, season_length: int = 8) -> np.ndarray:
     """Use values from the end of the lookback window, cycling seasonally."""
     n_samples = X.shape[0]
     predictions = np.zeros((n_samples, horizon), dtype=np.float32)
@@ -37,9 +35,7 @@ def seasonal_persistence_forecast(
     return predictions
 
 
-def linear_regression_forecast(
-    X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray
-) -> np.ndarray:
+def linear_regression_forecast(X_train: np.ndarray, y_train: np.ndarray, X_test: np.ndarray) -> np.ndarray:
     """Fit linear regression on flattened sequences."""
     n_train = X_train.shape[0]
     n_test = X_test.shape[0]
@@ -85,9 +81,7 @@ def compare_baselines(
 
     seasonal_pred = seasonal_persistence_forecast(X_test, horizon, season_length)
     seasonal_metrics = ForecastMetrics.compute_all(y_test, seasonal_pred)
-    results.append(
-        BaselineResult("Seasonal Persistence", seasonal_metrics, seasonal_pred)
-    )
+    results.append(BaselineResult("Seasonal Persistence", seasonal_metrics, seasonal_pred))
     logger.info("Seasonal Persistence RMSE: %.4f", seasonal_metrics["rmse"])
 
     if X_train is not None and y_train is not None:
@@ -115,10 +109,7 @@ def format_comparison_table(results: list[BaselineResult]) -> str:
 
     for r in results:
         m = r.metrics
-        lines.append(
-            f"{r.name:<25} {m['rmse']:>10.4f} {m['mae']:>10.4f} "
-            f"{m['mape']:>10.2f} {m['r2']:>10.4f}"
-        )
+        lines.append(f"{r.name:<25} {m['rmse']:>10.4f} {m['mae']:>10.4f} {m['mape']:>10.2f} {m['r2']:>10.4f}")
 
     lines.append(separator)
     return "\n".join(lines)

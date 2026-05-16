@@ -10,29 +10,31 @@ from src.evaluation.metrics import ForecastMetrics  # noqa: E402
 from src.models.cnn_lstm import build_cnn_lstm_model  # noqa: E402
 from src.training.trainer import CNNLSTMTrainer  # noqa: E402
 
-EXPECTED_METRIC_KEYS = {'rmse', 'mae', 'mape', 'smape', 'r2', 'nrmse'}
+EXPECTED_METRIC_KEYS = {"rmse", "mae", "mape", "smape", "r2", "nrmse"}
 
 
-def _make_synthetic_df(n_buildings=3, n_timestamps=500, freq='3h', seed=42):
+def _make_synthetic_df(n_buildings=3, n_timestamps=500, freq="3h", seed=42):
     np.random.seed(seed)
     rows = []
     for i in range(n_buildings):
-        bid = f'building_{i}'
-        timestamps = pd.date_range('2020-01-01', periods=n_timestamps, freq=freq)
+        bid = f"building_{i}"
+        timestamps = pd.date_range("2020-01-01", periods=n_timestamps, freq=freq)
         for ts in timestamps:
-            rows.append({
-                'timestamp_local': ts,
-                'building_id': bid,
-                'meter': 'electricity',
-                'value': np.random.uniform(10, 100),
-                'hour': ts.hour,
-                'day_of_week': ts.dayofweek,
-                'month': ts.month,
-                'is_weekend': int(ts.dayofweek >= 5),
-                'is_working_hours': int(8 <= ts.hour <= 18 and ts.dayofweek < 5),
-                'quarter': ts.quarter,
-                'day_of_year': ts.dayofyear,
-            })
+            rows.append(
+                {
+                    "timestamp_local": ts,
+                    "building_id": bid,
+                    "meter": "electricity",
+                    "value": np.random.uniform(10, 100),
+                    "hour": ts.hour,
+                    "day_of_week": ts.dayofweek,
+                    "month": ts.month,
+                    "is_weekend": int(ts.dayofweek >= 5),
+                    "is_working_hours": int(8 <= ts.hour <= 18 and ts.dayofweek < 5),
+                    "quarter": ts.quarter,
+                    "day_of_year": ts.dayofyear,
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -53,14 +55,14 @@ def _small_config():
 
 
 class TestEndToEndPipeline:
-
     def test_full_pipeline_synthetic_data(self):
         config = _small_config()
         df = _make_synthetic_df(n_buildings=3, n_timestamps=500)
-        building_id = 'building_0'
+        building_id = "building_0"
 
         X, y = create_sequences(
-            df, building_id,
+            df,
+            building_id,
             lookback=config.data.lookback_window,
             horizon=config.data.forecast_horizon,
             stride=config.data.stride,
@@ -88,8 +90,8 @@ class TestEndToEndPipeline:
         )
         history = trainer.fit(train_ds, val_ds)
 
-        assert len(history['train_loss']) == 1
-        assert np.isfinite(history['train_loss'][0])
+        assert len(history["train_loss"]) == 1
+        assert np.isfinite(history["train_loss"][0])
 
         batch_x = X[:4]
         preds = model(batch_x, training=False).numpy()
@@ -114,7 +116,8 @@ class TestEndToEndPipeline:
 
     def test_sequences_feed_into_model(self, sample_building_df, default_config):
         X, y = create_sequences(
-            sample_building_df, 'building_A',
+            sample_building_df,
+            "building_A",
             lookback=default_config.data.lookback_window,
             horizon=default_config.data.forecast_horizon,
             stride=default_config.data.stride,

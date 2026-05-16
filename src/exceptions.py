@@ -1,4 +1,5 @@
 """Custom exceptions for the SmartGrid pipeline."""
+
 from __future__ import annotations
 
 

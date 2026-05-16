@@ -33,7 +33,7 @@ class TestForecastMetrics:
         y_pred = y_true + np.random.normal(0, 1, (50, 12))
         result = ForecastMetrics.compute_all(y_true, y_pred)
 
-        expected_keys = {'rmse', 'mae', 'mape', 'smape', 'r2', 'nrmse'}
+        expected_keys = {"rmse", "mae", "mape", "smape", "r2", "nrmse"}
         assert set(result.keys()) == expected_keys
 
     def test_compute_all_handles_nan(self):

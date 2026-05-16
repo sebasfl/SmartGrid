@@ -29,11 +29,17 @@ def download_raw_data(output_path: str = "data/raw_electricity.csv") -> pathlib.
         response = requests.get(BDG2_URL, stream=True, timeout=300)
         response.raise_for_status()
 
-        total_size = int(response.headers.get('content-length', 0))
+        total_size = int(response.headers.get("content-length", 0))
 
-        with open(output_file, 'wb') as f, tqdm(
-            total=total_size, unit='B', unit_scale=True, desc='Downloading',
-        ) as pbar:
+        with (
+            open(output_file, "wb") as f,
+            tqdm(
+                total=total_size,
+                unit="B",
+                unit_scale=True,
+                desc="Downloading",
+            ) as pbar,
+        ):
             for chunk in response.iter_content(chunk_size=1024 * 1024):
                 if chunk:
                     f.write(chunk)
@@ -58,8 +64,10 @@ def convert_to_parquet(csv_path: pathlib.Path, parquet_path: pathlib.Path) -> pd
 
     value_vars = [c for c in df.columns if c != "timestamp"]
     df_long = df.melt(
-        id_vars=["timestamp"], value_vars=value_vars,
-        var_name="building_id", value_name="value",
+        id_vars=["timestamp"],
+        value_vars=value_vars,
+        var_name="building_id",
+        value_name="value",
     )
 
     df_long = df_long.rename(columns={"timestamp": "timestamp_local"})
@@ -73,31 +81,35 @@ def convert_to_parquet(csv_path: pathlib.Path, parquet_path: pathlib.Path) -> pd
 
     df_long = df_long.sort_values(["building_id", "timestamp_local"]).reset_index(drop=True)
 
-    schema = pa.schema([
-        ('timestamp_local', pa.timestamp('ns')),
-        ('building_id', pa.string()),
-        ('meter', pa.string()),
-        ('value', pa.float32()),
-    ])
+    schema = pa.schema(
+        [
+            ("timestamp_local", pa.timestamp("ns")),
+            ("building_id", pa.string()),
+            ("meter", pa.string()),
+            ("value", pa.float32()),
+        ]
+    )
 
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(df_long, schema=schema, preserve_index=False)
-    pq.write_table(table, parquet_path, compression='snappy')
+    pq.write_table(table, parquet_path, compression="snappy")
 
     logger.info(
         "Parquet saved: %s records, %d buildings, %s to %s",
-        f"{len(df_long):,}", df_long['building_id'].nunique(),
-        df_long['timestamp_local'].min(), df_long['timestamp_local'].max(),
+        f"{len(df_long):,}",
+        df_long["building_id"].nunique(),
+        df_long["timestamp_local"].min(),
+        df_long["timestamp_local"].max(),
     )
 
     return df_long
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Download BDG2 electricity data and convert to parquet')
-    parser.add_argument('--csv-output', type=str, default='data/raw_electricity.csv')
-    parser.add_argument('--parquet-output', type=str, default='data/processed/bdg2_electricity_long.parquet')
-    parser.add_argument('--skip-parquet', action='store_true', help='Skip parquet conversion')
+    parser = argparse.ArgumentParser(description="Download BDG2 electricity data and convert to parquet")
+    parser.add_argument("--csv-output", type=str, default="data/raw_electricity.csv")
+    parser.add_argument("--parquet-output", type=str, default="data/processed/bdg2_electricity_long.parquet")
+    parser.add_argument("--skip-parquet", action="store_true", help="Skip parquet conversion")
 
     args = parser.parse_args()
 

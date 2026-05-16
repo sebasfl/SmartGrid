@@ -12,11 +12,12 @@ import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
 
-os.environ['NUMBA_CUDA_ENABLE_PYNVJITLINK'] = '1'
+os.environ["NUMBA_CUDA_ENABLE_PYNVJITLINK"] = "1"
 
 try:
     import cudf
     import cupy as cp  # noqa: F401
+
     GPU_AVAILABLE = True
     logger.info("GPU acceleration: cuDF + CuPy available")
 except (ImportError, ModuleNotFoundError):
@@ -69,17 +70,15 @@ class BasicPreprocessor:
             logger.info("Adding time features (vectorized)...")
 
         if not self.gpu_available:
-            df['timestamp_local'] = pd.to_datetime(df['timestamp_local'])
+            df["timestamp_local"] = pd.to_datetime(df["timestamp_local"])
 
-        df['hour'] = df['timestamp_local'].dt.hour.astype('int8')
-        df['day_of_week'] = df['timestamp_local'].dt.dayofweek.astype('int8')
-        df['month'] = df['timestamp_local'].dt.month.astype('int8')
-        df['is_weekend'] = (df['day_of_week'] >= 5).astype('int8')
-        df['is_working_hours'] = (
-            (df['hour'] >= 8) & (df['hour'] <= 18) & (df['is_weekend'] == 0)
-        ).astype('int8')
-        df['quarter'] = df['timestamp_local'].dt.quarter.astype('int8')
-        df['day_of_year'] = df['timestamp_local'].dt.dayofyear.astype('int16')
+        df["hour"] = df["timestamp_local"].dt.hour.astype("int8")
+        df["day_of_week"] = df["timestamp_local"].dt.dayofweek.astype("int8")
+        df["month"] = df["timestamp_local"].dt.month.astype("int8")
+        df["is_weekend"] = (df["day_of_week"] >= 5).astype("int8")
+        df["is_working_hours"] = ((df["hour"] >= 8) & (df["hour"] <= 18) & (df["is_weekend"] == 0)).astype("int8")
+        df["quarter"] = df["timestamp_local"].dt.quarter.astype("int8")
+        df["day_of_year"] = df["timestamp_local"].dt.dayofyear.astype("int16")
 
         return df
 
@@ -90,25 +89,26 @@ class BasicPreprocessor:
         before_resample = len(df)
 
         if self.gpu_available:
-            df['time_bin'] = (
-                df['timestamp_local'].astype('int64') // (3 * 3600 * 1_000_000_000)
-            ) * (3 * 3600 * 1_000_000_000)
-            df['time_bin'] = df['time_bin'].astype('datetime64[ns]')
+            df["time_bin"] = (df["timestamp_local"].astype("int64") // (3 * 3600 * 1_000_000_000)) * (
+                3 * 3600 * 1_000_000_000
+            )
+            df["time_bin"] = df["time_bin"].astype("datetime64[ns]")
         else:
-            df['time_bin'] = df['timestamp_local'].dt.floor('3h')
+            df["time_bin"] = df["timestamp_local"].dt.floor("3h")
 
-        agg_dict: dict = {'value': 'mean'}
-        if 'meter' in df.columns:
-            agg_dict['meter'] = 'first'
+        agg_dict: dict = {"value": "mean"}
+        if "meter" in df.columns:
+            agg_dict["meter"] = "first"
 
-        df = df.groupby(['building_id', 'time_bin'], as_index=False).agg(agg_dict)
-        df = df.rename(columns={'time_bin': 'timestamp_local'})
-        df = df.dropna(subset=['value'])
+        df = df.groupby(["building_id", "time_bin"], as_index=False).agg(agg_dict)
+        df = df.rename(columns={"time_bin": "timestamp_local"})
+        df = df.dropna(subset=["value"])
 
         if self.verbose:
             logger.info(
                 "  %s -> %s records (%.1f%% reduction)",
-                f"{before_resample:,}", f"{len(df):,}",
+                f"{before_resample:,}",
+                f"{len(df):,}",
                 (1 - len(df) / before_resample) * 100,
             )
 
@@ -116,7 +116,7 @@ class BasicPreprocessor:
 
     def remove_duplicates(self, df: DataFrame) -> DataFrame:
         before_dedup = len(df)
-        df = df.drop_duplicates(subset=['building_id', 'timestamp_local'], keep='first')
+        df = df.drop_duplicates(subset=["building_id", "timestamp_local"], keep="first")
 
         if self.verbose:
             removed = before_dedup - len(df)
@@ -132,9 +132,12 @@ class BasicPreprocessor:
         resample_3h: bool = False,
     ) -> DataFrame:
         if self.verbose:
-            logger.info("Starting preprocessing: %s records, %s buildings (%s)",
-                        f"{len(df):,}", f"{df['building_id'].nunique():,}",
-                        "GPU" if self.gpu_available else "CPU")
+            logger.info(
+                "Starting preprocessing: %s records, %s buildings (%s)",
+                f"{len(df):,}",
+                f"{df['building_id'].nunique():,}",
+                "GPU" if self.gpu_available else "CPU",
+            )
 
         original_size = len(df)
 
@@ -151,7 +154,8 @@ class BasicPreprocessor:
             logger.info(
                 "Preprocessing complete: %.1f%% retained (%s -> %s records)",
                 (len(df) / original_size) * 100,
-                f"{original_size:,}", f"{len(df):,}",
+                f"{original_size:,}",
+                f"{len(df):,}",
             )
 
         return df
@@ -160,30 +164,32 @@ class BasicPreprocessor:
 def _build_arrow_schema(columns: list[str]) -> pa.Schema:
     """Build Arrow schema matching the preprocessed DataFrame columns."""
     schema_fields = [
-        ('timestamp_local', pa.timestamp('ns')),
-        ('building_id', pa.string()),
-        ('value', pa.float32()),
+        ("timestamp_local", pa.timestamp("ns")),
+        ("building_id", pa.string()),
+        ("value", pa.float32()),
     ]
 
-    if 'meter' in columns:
-        schema_fields.insert(2, ('meter', pa.string()))
+    if "meter" in columns:
+        schema_fields.insert(2, ("meter", pa.string()))
 
     from ..config import DataConfig
+
     time_cols = DataConfig().time_features
     for tc in time_cols:
         if tc in columns:
-            schema_fields.append((tc, pa.bool_() if tc.startswith('is_') else pa.int32()))
+            schema_fields.append((tc, pa.bool_() if tc.startswith("is_") else pa.int32()))
 
     return pa.schema(schema_fields)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Preprocessing: time features + deduplication')
-    parser.add_argument('--parquet', type=Path, required=True)
-    parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--no-deduplicate', action='store_true')
-    parser.add_argument('--resample-3h', action='store_true',
-                        help='Resample from 1h to 3h intervals (reduces memory ~66%%)')
+    parser = argparse.ArgumentParser(description="Preprocessing: time features + deduplication")
+    parser.add_argument("--parquet", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--no-deduplicate", action="store_true")
+    parser.add_argument(
+        "--resample-3h", action="store_true", help="Resample from 1h to 3h intervals (reduces memory ~66%%)"
+    )
 
     args = parser.parse_args()
 
@@ -200,7 +206,7 @@ def main() -> None:
 
     schema = _build_arrow_schema(df_pandas.columns.tolist())
     table = pa.Table.from_pandas(df_pandas, schema=schema, preserve_index=False)
-    pq.write_table(table, args.output, compression='snappy')
+    pq.write_table(table, args.output, compression="snappy")
 
     logger.info("Saved %s records to %s", f"{len(df_clean):,}", args.output)
 

@@ -39,6 +39,7 @@ class TestBuildModel:
 
     def test_accepts_dataclass_config(self):
         from src.config import CNNConfig, ForecastHeadConfig, LSTMConfig
+
         model = build_cnn_lstm_model(
             input_shape=(24, 8),
             forecast_horizon=12,
@@ -79,5 +80,6 @@ class TestMutableDefaults:
 class TestCNNFeatureExtractor:
     def test_mismatched_filters_kernel_sizes_raises(self):
         from src.exceptions import ModelBuildError
+
         with pytest.raises(ModelBuildError):
             CNNFeatureExtractor(filters=(64,), kernel_sizes=(3, 3))

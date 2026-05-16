@@ -94,8 +94,7 @@ class TestPreprocessingParity:
         result = proc.process(df.copy(), resample_3h=True)
 
         assert len(result) < 48
-        time_feature_cols = ["hour", "day_of_week", "month", "is_weekend",
-                             "is_working_hours", "quarter", "day_of_year"]
+        time_feature_cols = ["hour", "day_of_week", "month", "is_weekend", "is_working_hours", "quarter", "day_of_year"]
         for col in time_feature_cols:
             assert col in result.columns
 

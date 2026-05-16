@@ -65,15 +65,15 @@ class ForecastMetrics:
         y_pred_clean = y_pred_flat[mask]
 
         if len(y_true_clean) == 0:
-            return {k: 0.0 for k in ['rmse', 'mae', 'mape', 'smape', 'r2', 'nrmse']}
+            return {k: 0.0 for k in ["rmse", "mae", "mape", "smape", "r2", "nrmse"]}
 
         return {
-            'rmse': ForecastMetrics.rmse(y_true_clean, y_pred_clean),
-            'mae': ForecastMetrics.mae(y_true_clean, y_pred_clean),
-            'mape': ForecastMetrics.mape(y_true_clean, y_pred_clean),
-            'smape': ForecastMetrics.smape(y_true_clean, y_pred_clean),
-            'r2': ForecastMetrics.r2(y_true_clean, y_pred_clean),
-            'nrmse': ForecastMetrics.nrmse(y_true_clean, y_pred_clean),
+            "rmse": ForecastMetrics.rmse(y_true_clean, y_pred_clean),
+            "mae": ForecastMetrics.mae(y_true_clean, y_pred_clean),
+            "mape": ForecastMetrics.mape(y_true_clean, y_pred_clean),
+            "smape": ForecastMetrics.smape(y_true_clean, y_pred_clean),
+            "r2": ForecastMetrics.r2(y_true_clean, y_pred_clean),
+            "nrmse": ForecastMetrics.nrmse(y_true_clean, y_pred_clean),
         }
 
 
@@ -91,7 +91,8 @@ class BuildingEvaluator:
     ) -> dict[str, float | str | int] | None:
         """Evaluate model on a single building. Returns None if insufficient data."""
         X, y_forecast = create_sequences_fn(
-            df, building_id,
+            df,
+            building_id,
             lookback=config.data.lookback_window,
             horizon=config.data.forecast_horizon,
             stride=config.data.stride,
@@ -108,12 +109,12 @@ class BuildingEvaluator:
         metrics = ForecastMetrics.compute_all(y_forecast, forecast_pred)
 
         return {
-            'building_id': building_id,
-            'n_sequences': len(X),
-            'forecast_rmse': metrics['rmse'],
-            'forecast_mae': metrics['mae'],
-            'forecast_mape': metrics['mape'],
-            'forecast_r2': metrics['r2'],
+            "building_id": building_id,
+            "n_sequences": len(X),
+            "forecast_rmse": metrics["rmse"],
+            "forecast_mae": metrics["mae"],
+            "forecast_mape": metrics["mape"],
+            "forecast_r2": metrics["r2"],
         }
 
     @staticmethod
@@ -124,14 +125,19 @@ class BuildingEvaluator:
         scaler: StandardScaler,
         config: Config,
         create_sequences_fn: Callable,
-        set_name: str = 'test',
+        set_name: str = "test",
     ) -> pd.DataFrame:
         results: list[dict] = []
         skipped = 0
 
         for building_id in building_ids:
             metrics = BuildingEvaluator.evaluate_single_building(
-                df, building_id, model, scaler, config, create_sequences_fn,
+                df,
+                building_id,
+                model,
+                scaler,
+                config,
+                create_sequences_fn,
             )
             if metrics:
                 results.append(metrics)
@@ -144,7 +150,7 @@ class BuildingEvaluator:
         return pd.DataFrame(results)
 
     @staticmethod
-    def save_evaluation_results(results_df: pd.DataFrame, output_dir: str, set_name: str = 'test') -> None:
+    def save_evaluation_results(results_df: pd.DataFrame, output_dir: str, set_name: str = "test") -> None:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -152,22 +158,22 @@ class BuildingEvaluator:
         results_df.to_csv(results_path, index=False)
 
         summary = {
-            'evaluation_type': f'{set_name}_set',
-            'n_buildings': len(results_df),
-            'total_sequences': int(results_df['n_sequences'].sum()),
-            'forecast_metrics': {
-                'rmse_mean': float(results_df['forecast_rmse'].mean()),
-                'rmse_std': float(results_df['forecast_rmse'].std()),
-                'rmse_median': float(results_df['forecast_rmse'].median()),
-                'mae_mean': float(results_df['forecast_mae'].mean()),
-                'mae_std': float(results_df['forecast_mae'].std()),
-                'mape_mean': float(results_df['forecast_mape'].mean()),
-                'mape_std': float(results_df['forecast_mape'].std()),
-                'r2_mean': float(results_df['forecast_r2'].mean()),
-                'r2_std': float(results_df['forecast_r2'].std()),
+            "evaluation_type": f"{set_name}_set",
+            "n_buildings": len(results_df),
+            "total_sequences": int(results_df["n_sequences"].sum()),
+            "forecast_metrics": {
+                "rmse_mean": float(results_df["forecast_rmse"].mean()),
+                "rmse_std": float(results_df["forecast_rmse"].std()),
+                "rmse_median": float(results_df["forecast_rmse"].median()),
+                "mae_mean": float(results_df["forecast_mae"].mean()),
+                "mae_std": float(results_df["forecast_mae"].std()),
+                "mape_mean": float(results_df["forecast_mape"].mean()),
+                "mape_std": float(results_df["forecast_mape"].std()),
+                "r2_mean": float(results_df["forecast_r2"].mean()),
+                "r2_std": float(results_df["forecast_r2"].std()),
             },
         }
 
         summary_path = output_path / f"{set_name}_evaluation_summary.json"
-        with open(summary_path, 'w') as f:
+        with open(summary_path, "w") as f:
             json.dump(summary, f, indent=2)

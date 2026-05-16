@@ -1,4 +1,5 @@
 """Batch inference script for the CNN-LSTM energy forecasting model."""
+
 from __future__ import annotations
 
 import argparse
@@ -34,14 +35,16 @@ def load_artifacts(model_dir: Path) -> tuple[tf.keras.Model, Config, StandardSca
         raise DataError(f"Scaler not found: {scaler_path}")
 
     import sklearn
+
     scaler_artifact = joblib.load(scaler_path)
     if isinstance(scaler_artifact, dict):
-        scaler = scaler_artifact['scaler']
-        saved_version = scaler_artifact.get('sklearn_version', 'unknown')
+        scaler = scaler_artifact["scaler"]
+        saved_version = scaler_artifact.get("sklearn_version", "unknown")
         if saved_version != sklearn.__version__:
             logger.warning(
                 "Scaler saved with sklearn %s but current is %s — predictions may differ",
-                saved_version, sklearn.__version__,
+                saved_version,
+                sklearn.__version__,
             )
     else:
         # Backwards compat: old format saved scaler directly
@@ -54,7 +57,7 @@ def load_artifacts(model_dir: Path) -> tuple[tf.keras.Model, Config, StandardSca
         lstm_config=config.lstm,
         forecast_config=config.forecast_head,
     )
-    model.compile(loss=config.loss.forecast_loss_type, metrics=['mae', 'mse'])
+    model.compile(loss=config.loss.forecast_loss_type, metrics=["mae", "mse"])
 
     weights_path = find_weights(model_dir)
     model.load_weights(str(weights_path))
@@ -202,10 +205,14 @@ def predict(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch inference for CNN-LSTM energy forecasting model")
 
-    parser.add_argument("--model_dir", type=str, required=True, help="Directory containing model weights, config.json, and scaler.pkl")
+    parser.add_argument(
+        "--model_dir", type=str, required=True, help="Directory containing model weights, config.json, and scaler.pkl"
+    )
     parser.add_argument("--parquet", type=str, required=True, help="Path to preprocessed parquet file")
     parser.add_argument("--building_split", type=str, default=None, help="Path to building_split.json (uses test set)")
-    parser.add_argument("--output", type=str, default="predictions.csv", help="Output CSV path for per-building results")
+    parser.add_argument(
+        "--output", type=str, default="predictions.csv", help="Output CSV path for per-building results"
+    )
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for inference")
 
     predict(parser.parse_args())

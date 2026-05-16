@@ -10,22 +10,24 @@ def sample_building_df():
     """Small DataFrame with 2 buildings, 200 timestamps each."""
     np.random.seed(42)
     rows = []
-    for bid in ['building_A', 'building_B']:
-        timestamps = pd.date_range('2020-01-01', periods=200, freq='3h')
+    for bid in ["building_A", "building_B"]:
+        timestamps = pd.date_range("2020-01-01", periods=200, freq="3h")
         for ts in timestamps:
-            rows.append({
-                'timestamp_local': ts,
-                'building_id': bid,
-                'meter': 'electricity',
-                'value': np.random.uniform(10, 100),
-                'hour': ts.hour,
-                'day_of_week': ts.dayofweek,
-                'month': ts.month,
-                'is_weekend': int(ts.dayofweek >= 5),
-                'is_working_hours': int(8 <= ts.hour <= 18 and ts.dayofweek < 5),
-                'quarter': ts.quarter,
-                'day_of_year': ts.dayofyear,
-            })
+            rows.append(
+                {
+                    "timestamp_local": ts,
+                    "building_id": bid,
+                    "meter": "electricity",
+                    "value": np.random.uniform(10, 100),
+                    "hour": ts.hour,
+                    "day_of_week": ts.dayofweek,
+                    "month": ts.month,
+                    "is_weekend": int(ts.dayofweek >= 5),
+                    "is_working_hours": int(8 <= ts.hour <= 18 and ts.dayofweek < 5),
+                    "quarter": ts.quarter,
+                    "day_of_year": ts.dayofyear,
+                }
+            )
     return pd.DataFrame(rows)
 
 

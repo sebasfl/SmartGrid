@@ -59,16 +59,18 @@ class TestConfig:
 
     def test_from_json_rejects_unknown_section(self, tmp_path):
         import json
+
         path = str(tmp_path / "bad.json")
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump({"unknown_section": {"key": "val"}}, f)
         with pytest.raises(ConfigurationError, match="Unknown config sections"):
             Config.from_json(path)
 
     def test_from_json_rejects_unknown_key(self, tmp_path):
         import json
+
         path = str(tmp_path / "bad_key.json")
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump({"cnn": {"nonexistent_param": 42}}, f)
         with pytest.raises(ConfigurationError, match="Unknown keys"):
             Config.from_json(path)

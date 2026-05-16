@@ -15,7 +15,9 @@ class DataConfig:
     # os.environ.get() always returns str here due to fallback defaults
     data_root: str = field(default_factory=lambda: os.environ.get("SMARTGRID_DATA_ROOT", "/app/data"))
     parquet_path: str = field(
-        default_factory=lambda: os.environ.get("SMARTGRID_PARQUET_PATH", "/app/data/processed/bdg2_electricity_cleaned.parquet")
+        default_factory=lambda: os.environ.get(
+            "SMARTGRID_PARQUET_PATH", "/app/data/processed/bdg2_electricity_cleaned.parquet"
+        )
     )
     model_dir: str = field(default_factory=lambda: os.environ.get("SMARTGRID_MODEL_DIR", "/app/models"))
 
@@ -24,11 +26,18 @@ class DataConfig:
     lookback_window: int = 480
     stride: int = 8
 
-    time_features: list[str] = field(default_factory=lambda: [
-        'hour', 'day_of_week', 'month', 'is_weekend',
-        'is_working_hours', 'quarter', 'day_of_year'
-    ])
-    value_col: str = 'value'
+    time_features: list[str] = field(
+        default_factory=lambda: [
+            "hour",
+            "day_of_week",
+            "month",
+            "is_weekend",
+            "is_working_hours",
+            "quarter",
+            "day_of_year",
+        ]
+    )
+    value_col: str = "value"
 
     scaler_sample_buildings: int = 10
 
@@ -50,7 +59,7 @@ class CNNConfig:
     kernel_sizes: list[int] = field(default_factory=lambda: [3, 3, 3])
     dropout: float = 0.2
     use_batch_norm: bool = True
-    activation: str = 'relu'
+    activation: str = "relu"
 
 
 @dataclass
@@ -69,14 +78,14 @@ class ForecastHeadConfig:
 
     hidden_dims: list[int] = field(default_factory=lambda: [128, 64])
     dropout: float = 0.2
-    activation: str = 'relu'
+    activation: str = "relu"
 
 
 @dataclass
 class LossConfig:
     """Loss function configuration."""
 
-    forecast_loss_type: str = 'mse'
+    forecast_loss_type: str = "mse"
     huber_delta: float = 1.0
 
 
@@ -84,7 +93,7 @@ class LossConfig:
 class OptimizerConfig:
     """Optimizer configuration."""
 
-    optimizer_type: str = 'adam'
+    optimizer_type: str = "adam"
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
     beta1: float = 0.9
@@ -92,7 +101,7 @@ class OptimizerConfig:
     epsilon: float = 1e-7
 
     use_lr_schedule: bool = True
-    lr_schedule_type: str = 'cosine'
+    lr_schedule_type: str = "cosine"
     warmup_steps: int = 1000
     min_lr: float = 1e-7
 
@@ -115,7 +124,7 @@ class TrainingConfig:
 
     early_stopping_patience: int = 10
     early_stopping_min_delta: float = 1e-4
-    early_stopping_monitor: str = 'val_loss'
+    early_stopping_monitor: str = "val_loss"
 
     log_freq: int = 100
     tensorboard_dir: str = "/app/logs"
@@ -123,18 +132,16 @@ class TrainingConfig:
     random_seed: int = 42
 
 
-_KNOWN_SECTIONS = frozenset({
-    'data', 'cnn', 'lstm', 'forecast_head', 'loss', 'optimizer', 'training'
-})
+_KNOWN_SECTIONS = frozenset({"data", "cnn", "lstm", "forecast_head", "loss", "optimizer", "training"})
 
 _SECTION_CLS = {
-    'data': DataConfig,
-    'cnn': CNNConfig,
-    'lstm': LSTMConfig,
-    'forecast_head': ForecastHeadConfig,
-    'loss': LossConfig,
-    'optimizer': OptimizerConfig,
-    'training': TrainingConfig,
+    "data": DataConfig,
+    "cnn": CNNConfig,
+    "lstm": LSTMConfig,
+    "forecast_head": ForecastHeadConfig,
+    "loss": LossConfig,
+    "optimizer": OptimizerConfig,
+    "training": TrainingConfig,
 }
 
 
@@ -159,8 +166,7 @@ class Config:
         unknown_sections = set(config_dict.keys()) - _KNOWN_SECTIONS
         if unknown_sections:
             raise ConfigurationError(
-                f"Unknown config sections: {unknown_sections}. "
-                f"Valid sections: {sorted(_KNOWN_SECTIONS)}"
+                f"Unknown config sections: {unknown_sections}. Valid sections: {sorted(_KNOWN_SECTIONS)}"
             )
 
         kwargs: dict = {}
@@ -170,8 +176,7 @@ class Config:
             unknown_keys = set(section_data.keys()) - valid_fields
             if unknown_keys:
                 raise ConfigurationError(
-                    f"Unknown keys in '{section}': {unknown_keys}. "
-                    f"Valid keys: {sorted(valid_fields)}"
+                    f"Unknown keys in '{section}': {unknown_keys}. Valid keys: {sorted(valid_fields)}"
                 )
             kwargs[section] = section_cls(**section_data)
 
@@ -182,7 +187,7 @@ class Config:
         config_dict = {name: getattr(self, name).__dict__ for name in _SECTION_CLS}
 
         Path(json_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(json_path, 'w') as f:
+        with open(json_path, "w") as f:
             json.dump(config_dict, f, indent=2)
 
     def validate(self) -> None:
@@ -208,9 +213,13 @@ class Config:
         lines = ["=" * 60, "CONFIGURATION", "=" * 60, ""]
 
         for section_name, attr_name in [
-            ("DATA", "data"), ("CNN", "cnn"), ("LSTM", "lstm"),
-            ("FORECAST HEAD", "forecast_head"), ("LOSS", "loss"),
-            ("OPTIMIZER", "optimizer"), ("TRAINING", "training"),
+            ("DATA", "data"),
+            ("CNN", "cnn"),
+            ("LSTM", "lstm"),
+            ("FORECAST HEAD", "forecast_head"),
+            ("LOSS", "loss"),
+            ("OPTIMIZER", "optimizer"),
+            ("TRAINING", "training"),
         ]:
             section = getattr(self, attr_name)
             lines.append(f"{section_name}:")
