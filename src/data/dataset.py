@@ -81,7 +81,7 @@ def prepare_dataset(
         sample_buildings = split_buildings[:min(n_sample, len(split_buildings))]
         scaler = StandardScaler()
 
-        for i, building_id in enumerate(sample_buildings):
+        for _i, building_id in enumerate(sample_buildings):
             X, _ = create_sequences(
                 df, building_id,
                 lookback=config.data.lookback_window,

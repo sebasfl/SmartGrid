@@ -37,7 +37,7 @@ class CNNFeatureExtractor(layers.Layer):
 
         self.conv_blocks: list[list[layers.Layer]] = []
 
-        for i, (n_filters, kernel_size) in enumerate(zip(filters, kernel_sizes)):
+        for i, (n_filters, kernel_size) in enumerate(zip(filters, kernel_sizes, strict=False)):
             block: list[layers.Layer] = []
 
             block.append(layers.Conv1D(

@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-
 from ..config import DataConfig
 
 # Canonical feature column order: time features followed by value column

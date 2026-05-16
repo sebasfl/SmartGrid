@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 
 import pandas as pd
 
@@ -28,7 +27,7 @@ def load_building_split(split_path: str) -> dict[str, list[str]]:
     Returns:
         Dict with keys 'train', 'validation', 'test' mapping to building ID lists.
     """
-    with open(split_path, "r") as f:
+    with open(split_path) as f:
         return json.load(f)  # type: ignore[no-any-return]
 
 
