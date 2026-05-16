@@ -85,7 +85,7 @@ def calculate_building_quality_metrics(
         is_same = values == values.shift(1)
         groups = (~is_same).cumsum()
         run_lengths = is_same.groupby(groups).sum()
-        constant_sequences = int((run_lengths >= constant_threshold).sum())
+        constant_sequences = int((run_lengths >= constant_threshold).sum())  # type: ignore[operator]
         constant_ratio = constant_sequences / len(values)
 
         mean_value = float(values.mean())
@@ -272,7 +272,7 @@ def evaluate_all_buildings_gpu(gdf: cudf.DataFrame, granularity_hours: int = 1) 
         "coefficient_of_variation",
         "quality_score",
     ]
-    return result_df[final_cols].sort_values("quality_score", ascending=False)
+    return result_df[final_cols].sort_values("quality_score", ascending=False)  # type: ignore[return-value]
 
 
 def evaluate_all_buildings(

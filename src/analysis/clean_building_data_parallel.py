@@ -200,7 +200,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     if processor.gpu_available:
-        df_pandas = df_clean.to_pandas()
+        df_pandas = df_clean.to_pandas()  # type: ignore[operator]
     else:
         df_pandas = df_clean
 
