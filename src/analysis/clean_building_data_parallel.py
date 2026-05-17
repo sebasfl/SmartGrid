@@ -27,7 +27,7 @@ DataFrame = Union[pd.DataFrame, "cudf.DataFrame"]
 
 
 class BasicPreprocessor:
-    """Preprocessing pipeline: time features, optional 3h resampling, deduplication."""
+    """Preprocessing pipeline: time features, optional 6h resampling, deduplication."""
 
     def __init__(self, verbose: bool = True) -> None:
         self.verbose = verbose
@@ -82,19 +82,19 @@ class BasicPreprocessor:
 
         return df
 
-    def resample_to_3h(self, df: DataFrame) -> DataFrame:
+    def resample_to_6h(self, df: DataFrame) -> DataFrame:
         if self.verbose:
-            logger.info("Resampling from 1h to 3h intervals...")
+            logger.info("Resampling from 1h to 6h intervals...")
 
         before_resample = len(df)
 
         if self.gpu_available:
-            df["time_bin"] = (df["timestamp_local"].astype("int64") // (3 * 3600 * 1_000_000_000)) * (
-                3 * 3600 * 1_000_000_000
+            df["time_bin"] = (df["timestamp_local"].astype("int64") // (6 * 3600 * 1_000_000_000)) * (
+                6 * 3600 * 1_000_000_000
             )
             df["time_bin"] = df["time_bin"].astype("datetime64[ns]")
         else:
-            df["time_bin"] = df["timestamp_local"].dt.floor("3h")
+            df["time_bin"] = df["timestamp_local"].dt.floor("6h")
 
         agg_dict: dict = {"value": "mean"}
         if "meter" in df.columns:
@@ -129,7 +129,7 @@ class BasicPreprocessor:
         self,
         df: DataFrame,
         skip_deduplication: bool = False,
-        resample_3h: bool = False,
+        resample_6h: bool = False,
     ) -> DataFrame:
         if self.verbose:
             logger.info(
@@ -143,8 +143,8 @@ class BasicPreprocessor:
 
         df = self.add_time_features(df)
 
-        if resample_3h:
-            df = self.resample_to_3h(df)
+        if resample_6h:
+            df = self.resample_to_6h(df)
             df = self.add_time_features(df)
 
         if not skip_deduplication:
@@ -188,14 +188,14 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--no-deduplicate", action="store_true")
     parser.add_argument(
-        "--resample-3h", action="store_true", help="Resample from 1h to 3h intervals (reduces memory ~66%%)"
+        "--resample-6h", action="store_true", help="Resample from 1h to 6h intervals (reduces memory ~83%%)"
     )
 
     args = parser.parse_args()
 
     processor = BasicPreprocessor(verbose=True)
     df = processor.load_data(args.parquet)
-    df_clean = processor.process(df, skip_deduplication=args.no_deduplicate, resample_3h=args.resample_3h)
+    df_clean = processor.process(df, skip_deduplication=args.no_deduplicate, resample_6h=args.resample_6h)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 

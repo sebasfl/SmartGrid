@@ -21,10 +21,10 @@ class DataConfig:
     )
     model_dir: str = field(default_factory=lambda: os.environ.get("SMARTGRID_MODEL_DIR", "/app/models"))
 
-    # With 3h granularity: 60 days = 480 intervals, 30 days = 240 intervals
-    forecast_horizon: int = 240
-    lookback_window: int = 480
-    stride: int = 8
+    # With 6h granularity: 60 days = 240 intervals, 30 days = 120 intervals
+    forecast_horizon: int = 120
+    lookback_window: int = 240
+    stride: int = 4
 
     time_features: list[str] = field(
         default_factory=lambda: [

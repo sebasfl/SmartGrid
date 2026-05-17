@@ -72,9 +72,9 @@ class TestBuildingQualityMetrics:
         metrics = calculate_building_quality_metrics(df, "nonexistent", granularity_hours=1)
         assert metrics is None
 
-    def test_3h_granularity(self):
-        df = _make_building_df("b1", n_hours=200, freq="3h")
-        metrics = calculate_building_quality_metrics(df, "b1", granularity_hours=3)
+    def test_6h_granularity(self):
+        df = _make_building_df("b1", n_hours=200, freq="6h")
+        metrics = calculate_building_quality_metrics(df, "b1", granularity_hours=6)
 
         assert metrics is not None
         assert metrics["total_records"] == 200

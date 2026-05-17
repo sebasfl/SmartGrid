@@ -24,7 +24,7 @@ def persistence_forecast(X: np.ndarray, horizon: int) -> np.ndarray:
     return np.tile(last_values[:, np.newaxis], (1, horizon))
 
 
-def seasonal_persistence_forecast(X: np.ndarray, horizon: int, season_length: int = 8) -> np.ndarray:
+def seasonal_persistence_forecast(X: np.ndarray, horizon: int, season_length: int = 4) -> np.ndarray:
     """Use values from the end of the lookback window, cycling seasonally."""
     n_samples = X.shape[0]
     predictions = np.zeros((n_samples, horizon), dtype=np.float32)
@@ -55,7 +55,7 @@ def compare_baselines(
     cnn_lstm_predictions: np.ndarray | None = None,
     X_train: np.ndarray | None = None,
     y_train: np.ndarray | None = None,
-    season_length: int = 8,
+    season_length: int = 4,
 ) -> list[BaselineResult]:
     """Compare CNN-LSTM against baseline models.
 
@@ -66,7 +66,7 @@ def compare_baselines(
         X_train: Training sequences (needed for linear regression).
         y_train: Training targets (needed for linear regression).
         season_length: Season length for seasonal persistence
-            (default: 8 = 1 day at 3h intervals).
+            (default: 4 = 1 day at 6h intervals).
 
     Returns:
         List of BaselineResult sorted by RMSE (best first).

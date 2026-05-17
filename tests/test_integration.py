@@ -13,7 +13,7 @@ from src.training.trainer import CNNLSTMTrainer  # noqa: E402
 EXPECTED_METRIC_KEYS = {"rmse", "mae", "mape", "smape", "r2", "nrmse"}
 
 
-def _make_synthetic_df(n_buildings=3, n_timestamps=500, freq="3h", seed=42):
+def _make_synthetic_df(n_buildings=3, n_timestamps=500, freq="6h", seed=42):
     np.random.seed(seed)
     rows = []
     for i in range(n_buildings):

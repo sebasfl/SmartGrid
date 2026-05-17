@@ -51,21 +51,21 @@ class TestPreprocessingParity:
         assert result["quarter"].iloc[0] == 1
         assert result["day_of_year"].iloc[0] == 1
 
-    def test_resample_3h_aggregation(self):
+    def test_resample_6h_aggregation(self):
         proc = self._cpu_processor()
         df = _make_test_df(n_hours=24, freq="1h")
-        result = proc.resample_to_3h(df.copy())
+        result = proc.resample_to_6h(df.copy())
 
-        assert len(result) == 8, f"Expected 8 rows after 3h resampling of 24h data, got {len(result)}"
+        assert len(result) == 4, f"Expected 4 rows after 6h resampling of 24h data, got {len(result)}"
 
-        original_first_3 = df["value"].iloc[:3].mean()
+        original_first_6 = df["value"].iloc[:6].mean()
         resampled_first = result.sort_values("timestamp_local")["value"].iloc[0]
-        np.testing.assert_allclose(resampled_first, original_first_3, rtol=1e-5)
+        np.testing.assert_allclose(resampled_first, original_first_6, rtol=1e-5)
 
-    def test_resample_3h_preserves_building_id(self):
+    def test_resample_6h_preserves_building_id(self):
         proc = self._cpu_processor()
         df = _make_test_df(n_hours=24, building_id="bldg_42")
-        result = proc.resample_to_3h(df.copy())
+        result = proc.resample_to_6h(df.copy())
 
         assert (result["building_id"] == "bldg_42").all()
 
@@ -91,7 +91,7 @@ class TestPreprocessingParity:
     def test_full_process_pipeline(self):
         proc = self._cpu_processor()
         df = _make_test_df(n_hours=48, freq="1h")
-        result = proc.process(df.copy(), resample_3h=True)
+        result = proc.process(df.copy(), resample_6h=True)
 
         assert len(result) < 48
         time_feature_cols = ["hour", "day_of_week", "month", "is_weekend", "is_working_hours", "quarter", "day_of_year"]
@@ -101,7 +101,7 @@ class TestPreprocessingParity:
     def test_full_process_without_resample(self):
         proc = self._cpu_processor()
         df = _make_test_df(n_hours=24)
-        result = proc.process(df.copy(), resample_3h=False)
+        result = proc.process(df.copy(), resample_6h=False)
 
         assert len(result) == 24
 

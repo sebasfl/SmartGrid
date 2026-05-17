@@ -11,7 +11,7 @@ def sample_building_df():
     np.random.seed(42)
     rows = []
     for bid in ["building_A", "building_B"]:
-        timestamps = pd.date_range("2020-01-01", periods=200, freq="3h")
+        timestamps = pd.date_range("2020-01-01", periods=200, freq="6h")
         for ts in timestamps:
             rows.append(
                 {
